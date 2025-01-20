@@ -14,24 +14,24 @@ import io
 def preprocess_dates(date_col):
     return date_col.apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) and hasattr(x, 'tzinfo') else x)
 
-def calculate_recency(publish_date, current_date):
-    if pd.isnull(publish_date):
+def calculate_recency(new_date, current_date):
+    if pd.isnull(new_date):
         return 0 
-    days_diff = (current_date - publish_date).days
+    days_diff = (current_date - new_date).days
     recency_score = 1 / (1 + np.exp(days_diff / 30))
     return recency_score
 
 def get_ranking_df(data, weights, data_selection):
-    data['publish_date'] = preprocess_dates(data['publish_date'])
+    data['new_date'] = preprocess_dates(data['new_date'])
     current_date = datetime.now()
 
     story_id_counts = data['story_id'].value_counts()
     max_frequency = story_id_counts.max()
-    max_recency = data['publish_date'].apply(lambda x: calculate_recency(x, current_date)).max()
+    max_recency = data['new_date'].apply(lambda x: calculate_recency(x, current_date)).max()
     # max_source_popularity = data['source_popularity'].max()
     max_authors = data['authors'].apply(len).max()
 
-    data['recency'] = data['publish_date'].apply(lambda x: calculate_recency(x, current_date))
+    data['recency'] = data['new_date'].apply(lambda x: calculate_recency(x, current_date))
 
     # Group and aggregate data
     aggregated = data.groupby('story_id').agg(
