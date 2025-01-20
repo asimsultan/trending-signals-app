@@ -5,4 +5,3 @@ matplotlib
 seaborn
 wordcloud
 boto3
-io
