@@ -39,8 +39,7 @@ def get_ranking_df(data, weights, data_selection):
         title=('title', 'first'),
         recency=('recency', 'mean'),
         # source_popularity=('source_popularity', 'mean'),
-        num_authors=('authors', lambda x: x.apply(len).sum())
-    )
+        num_authors=('authors', lambda x: x.apply(len).sum()))
 
     aggregated['frequency_norm'] = aggregated['frequency'] / max_frequency
     aggregated['recency_norm'] = aggregated['recency'] / max_recency
@@ -55,8 +54,7 @@ def get_ranking_df(data, weights, data_selection):
 
     if data_selection == 'Business':
         aggregated['trending_signal_score'] = aggregated['trending_signal_score'].apply(
-        lambda x: 0.9314 if x > 1 else x
-        )
+        lambda x: 0.9314 if x > 1 else x)
 
     elif data_selection == 'Australia':
         aggregated['trending_signal_score'] = aggregated['trending_signal_score'].apply(
@@ -79,9 +77,6 @@ def generate_wordcloud(author_list):
     return fig
 
 def get_author_counts(author_list):
-    """
-    Count the frequency of each author in the dataset.
-    """
     author_counts = Counter(author_list)
     return pd.DataFrame(author_counts.items(), columns=["Author", "Count"]).sort_values(by="Count", ascending=False)
 
@@ -101,6 +96,7 @@ def read_pkl_from_s3(bucket_name, object_name):
 def load_data(selection):
     bucket_name = "trending-signal-bucket"
     if selection == "Business":
+        # file_name = 'Test_Filtered_data_Australia.pkl'
         file_name = 'Business_df.pkl'
     elif selection == "Australia":
         file_name = 'Australia_df.pkl'
@@ -122,9 +118,6 @@ data_selection = st.sidebar.selectbox(
 )
 
 data = load_data(data_selection)
-
-
-
 
 st.sidebar.header("Adjust Weights")
 frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.6, 0.1)
