@@ -1,52 +1,63 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
-from collections import Counter
-import streamlit as st
 import math
-import matplotlib.pyplot as plt
-import seaborn as sns
-from wordcloud import WordCloud
 import boto3
 import pickle
 import io, os
 
+# Authentication logic
+def login():
+    st.sidebar.title("Login")
+    username = st.sidebar.text_input("Username")
+    password = st.sidebar.text_input("Password", type="password")
+
+    if username == st.secrets["USER_NAME"] and password == st.secrets["PASSWORD"]:
+        st.session_state["authenticated"] = True
+    else:
+        st.sidebar.error("Invalid credentials")
+
+# Authenticate user
+if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
+    login()
+    st.stop()
+
+# If authenticated, proceed with the app logic
+st.write("Welcome to the secured Streamlit app!")
+
+# Preprocess dates function
 def preprocess_dates(date_col):
     return date_col.apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) and hasattr(x, 'tzinfo') else x)
 
+# Recency calculation function
 def calculate_recency(new_date, current_date):
     if pd.isnull(new_date):
-        return 0 
+        return 0
     days_diff = (current_date - new_date).days
     recency_score = 1 / (1 + np.exp(days_diff / 30))
     return recency_score
 
+# Ranking data processing
 def get_ranking_df(data, weights, data_selection):
     data['new_date'] = preprocess_dates(data['new_date'])
     current_date = datetime.now()
 
-    story_id_counts = data['story_id'].value_counts()
-    max_frequency = story_id_counts.max()
+    max_frequency = data['story_id'].value_counts().max()
     max_recency = data['new_date'].apply(lambda x: calculate_recency(x, current_date)).max()
-    # max_source_popularity = data['source_popularity'].max()
     max_authors = data['authors'].apply(len).max()
-    max_page_rank = data['page_rank'].max()  # Max value of page rank
+    max_page_rank = data['page_rank'].max()
 
     data['recency'] = data['new_date'].apply(lambda x: calculate_recency(x, current_date))
-
-    # Group and aggregate data
     aggregated = data.groupby('story_id').agg(
         frequency=('story_id', 'size'),
         title=('title', 'first'),
         recency=('recency', 'mean'),
-        # source_popularity=('source_popularity', 'mean'),
         num_authors=('authors', lambda x: x.apply(len).sum()),
-        page_rank=('page_rank', 'mean')  # Aggregate page rank
-
+        page_rank=('page_rank', 'mean')
     )
     aggregated['frequency_norm'] = aggregated['frequency'] / max_frequency
     aggregated['recency_norm'] = aggregated['recency'] / max_recency
-    # aggregated['source_popularity_norm'] = aggregated['source_popularity'] / max_source_popularity
     aggregated['num_authors_norm'] = aggregated['num_authors'] / max_authors
     aggregated['page_rank_norm'] = aggregated['page_rank'] / max_page_rank
 
@@ -57,39 +68,14 @@ def get_ranking_df(data, weights, data_selection):
         weights['page_rank'] * aggregated['page_rank_norm']
     )
 
-    if data_selection == 'Business':
-        aggregated['trending_signal_score'] = aggregated['trending_signal_score'].apply(
-        lambda x: 0.9314 if x > 1 else x)
-
-    elif data_selection == 'Australia':
-        aggregated['trending_signal_score'] = aggregated['trending_signal_score'].apply(
-        lambda x: 0.9023 if x > 1 else x
-        )
-    
     ranking_df = aggregated.reset_index()[['story_id', 'title', 'frequency', 'trending_signal_score']]
     ranking_df = ranking_df.sort_values(by='trending_signal_score', ascending=False)
     return ranking_df
 
-def generate_wordcloud(author_list):
-    author_text = " ".join(author_list)
-    wordcloud = WordCloud(
-        width=800, height=400, background_color="white", colormap="viridis"
-    ).generate(author_text)
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.imshow(wordcloud, interpolation="bilinear")
-    ax.axis("off")
-    return fig
-
-def get_author_counts(author_list):
-    author_counts = Counter(author_list)
-    return pd.DataFrame(author_counts.items(), columns=["Author", "Count"]).sort_values(by="Count", ascending=False)
-
+# Read data from S3
 def read_pkl_from_s3(bucket_name, object_name):
-    # Get AWS credentials from environment variables
     aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
     aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
-
     s3_client = boto3.client(
         's3',
         aws_access_key_id=aws_access_key,
@@ -104,43 +90,29 @@ def read_pkl_from_s3(bucket_name, object_name):
         print(f"Error reading file: {e}")
         return None
 
+# Cache data loading
 @st.cache_data
 def load_data(selection):
     bucket_name = "trending-signal-bucket"
-    if selection == "Business":
-        # file_name = 'Test_Filtered_data_Australia.pkl'
-        file_name = 'Business_df.pkl'
-    elif selection == "Australia":
-        file_name = 'Australia_df.pkl'
-    else:
-        st.error("Invalid selection!")
-        st.stop()
-    
-    # data = pd.read_pickle(file_name)
-    data = read_pkl_from_s3(bucket_name, file_name)
+    file_name = 'Business_df.pkl' if selection == "Business" else 'Australia_df.pkl'
 
-    print('Read Data:', data)
+    # data = read_pkl_from_s3(bucket_name, file_name)
+    data = pd.read_pickle(file_name)
     return data
 
+# App starts here for authenticated users
 st.title("Trending Signals: Dynamic Weight Adjustment")
-
 st.sidebar.header("Data Selection")
-data_selection = st.sidebar.selectbox(
-    "Select Data Type", 
-    options=["Business", "Australia"], 
-    index=0
-)
-
+data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
 data = load_data(data_selection)
 
-st.sidebar.header("Adjust Weights Together")
+st.sidebar.header("Adjust Weights")
 frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
 page_rank_weight = st.sidebar.slider("Page Rank", 0.0, 1.0, 0.3, 0.1)
 recency_weight = st.sidebar.slider("Recency Weight", 0.0, 1.0, 0.2, 0.1)
 authors_weight = st.sidebar.slider("Authors Weight", 0.0, 1.0, 0.1, 0.1)
 
 total_weight = frequency_weight + page_rank_weight + recency_weight + authors_weight
-
 if not math.isclose(total_weight, 1.0, rel_tol=1e-6):
     st.warning("The total weight must sum to exactly 1. Adjust the sliders accordingly.")
     st.stop()
@@ -152,46 +124,6 @@ weights = {
     'authors': authors_weight
 }
 
-# ranking_df = data
 ranking_df = get_ranking_df(data, weights, data_selection)
-
 st.subheader("Top Trending Stories")
 st.dataframe(ranking_df)
-
-
-st.subheader("Top 10 Stories by Trending Signal Score")
-st.write("This bar chart shows the top 10 stories ranked by their trending signal scores. It highlights the most impactful and relevant stories based on the weights you selected.")
-top_stories = ranking_df.head(10)
-fig1, ax1 = plt.subplots(figsize=(10, 6))
-ax1.barh(top_stories['title'], top_stories['trending_signal_score'], color='skyblue')
-ax1.set_xlabel('Trending Signal Score')
-ax1.set_ylabel('Story Titles')
-ax1.set_title('Top 10 Stories by Trending Signal Score')
-ax1.invert_yaxis()
-st.pyplot(fig1)
-
-st.subheader("Distribution of Story Frequencies")
-st.write("This histogram shows the distribution of how often stories appear in the dataset. Peaks in the histogram indicate stories with similar levels of frequency.")
-fig2, ax2 = plt.subplots(figsize=(10, 6))
-ax2.hist(ranking_df['frequency'], bins=20, color='orange', edgecolor='black')
-ax2.set_xlabel('Frequency')
-ax2.set_ylabel('Count of Stories')
-ax2.set_title('Distribution of Story Frequencies')
-st.pyplot(fig2)
-
-st.subheader("Frequency vs. Trending Signal Score")
-st.write("This scatterplot illustrates the relationship between the number of articles (frequency) and the trending signal score. It helps identify if higher frequency correlates with higher scores.")
-fig3, ax3 = plt.subplots(figsize=(10, 6))
-sns.scatterplot(x='frequency', y='trending_signal_score', data=ranking_df, ax=ax3, alpha=0.7)
-ax3.set_xlabel('Frequency')
-ax3.set_ylabel('Trending Signal Score')
-ax3.set_title('Frequency vs. Trending Signal Score')
-st.pyplot(fig3)
-
-st.subheader("Correlation Heatmap")
-st.write("This heatmap shows the correlation between numerical columns such as frequency and trending signal score. Strong positive or negative correlations provide insights into how these metrics are related.")
-fig4, ax4 = plt.subplots(figsize=(8, 6))
-correlation_matrix = ranking_df[['frequency', 'trending_signal_score']].corr()
-sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f', ax=ax4)
-ax4.set_title('Correlation Heatmap')
-st.pyplot(fig4)
