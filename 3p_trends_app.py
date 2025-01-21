@@ -35,8 +35,7 @@ if not st.session_state["authenticated"]:
     st.stop()
 
 # If authenticated, proceed with the app logic
-st.sidebar.success(st.session_state.get("message", "Welcome!"))
-
+st.sidebar.success(st.session_state.get("message", "Logged in Successfully!"))
 
 # Preprocess dates function
 def preprocess_dates(date_col):
@@ -112,8 +111,8 @@ def load_data(selection):
     bucket_name = "trending-signal-bucket"
     file_name = 'Business_df.pkl' if selection == "Business" else 'Australia_df.pkl'
 
-    # data = read_pkl_from_s3(bucket_name, file_name)
-    data = pd.read_pickle(file_name)
+    data = read_pkl_from_s3(bucket_name, file_name)
+    # data = pd.read_pickle(file_name)
     return data
 
 
