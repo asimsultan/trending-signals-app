@@ -9,7 +9,7 @@ import seaborn as sns
 from wordcloud import WordCloud
 import boto3
 import pickle
-import io
+import io, os
 
 def preprocess_dates(date_col):
     return date_col.apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) and hasattr(x, 'tzinfo') else x)
@@ -133,7 +133,7 @@ data_selection = st.sidebar.selectbox(
 
 data = load_data(data_selection)
 
-st.sidebar.header("Adjust Weights")
+st.sidebar.header("Adjust Weights Together")
 frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
 page_rank_weight = st.sidebar.slider("Page Rank", 0.0, 1.0, 0.3, 0.1)
 recency_weight = st.sidebar.slider("Recency Weight", 0.0, 1.0, 0.2, 0.1)
