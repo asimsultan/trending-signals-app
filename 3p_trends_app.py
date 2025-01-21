@@ -30,6 +30,7 @@ def get_ranking_df(data, weights, data_selection):
     max_recency = data['new_date'].apply(lambda x: calculate_recency(x, current_date)).max()
     # max_source_popularity = data['source_popularity'].max()
     max_authors = data['authors'].apply(len).max()
+    max_page_rank = data['page_rank'].max()  # Max value of page rank
 
     data['recency'] = data['new_date'].apply(lambda x: calculate_recency(x, current_date))
 
@@ -39,17 +40,21 @@ def get_ranking_df(data, weights, data_selection):
         title=('title', 'first'),
         recency=('recency', 'mean'),
         # source_popularity=('source_popularity', 'mean'),
-        num_authors=('authors', lambda x: x.apply(len).sum()))
+        num_authors=('authors', lambda x: x.apply(len).sum()),
+        page_rank=('page_rank', 'mean')  # Aggregate page rank
 
+    )
     aggregated['frequency_norm'] = aggregated['frequency'] / max_frequency
     aggregated['recency_norm'] = aggregated['recency'] / max_recency
     # aggregated['source_popularity_norm'] = aggregated['source_popularity'] / max_source_popularity
     aggregated['num_authors_norm'] = aggregated['num_authors'] / max_authors
+    aggregated['page_rank_norm'] = aggregated['page_rank'] / max_page_rank
 
     aggregated['trending_signal_score'] = (
         weights['frequency'] * aggregated['frequency_norm'] +
         weights['recency'] * aggregated['recency_norm'] +
-        weights['authors'] * aggregated['num_authors_norm']
+        weights['authors'] * aggregated['num_authors_norm'] +
+        weights['page_rank'] * aggregated['page_rank_norm']
     )
 
     if data_selection == 'Business':
@@ -81,12 +86,19 @@ def get_author_counts(author_list):
     return pd.DataFrame(author_counts.items(), columns=["Author", "Count"]).sort_values(by="Count", ascending=False)
 
 def read_pkl_from_s3(bucket_name, object_name):
-    s3_client = boto3.client('s3')
+    # Get AWS credentials from environment variables
+    aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
+    aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
+    s3_client = boto3.client(
+        's3',
+        aws_access_key_id=aws_access_key,
+        aws_secret_access_key=aws_secret_key
+    )
     try:
         response = s3_client.get_object(Bucket=bucket_name, Key=object_name)
         file_content = response['Body'].read()
         data = pickle.load(io.BytesIO(file_content))
-        
         return data
     except Exception as e:
         print(f"Error reading file: {e}")
@@ -108,8 +120,6 @@ def load_data(selection):
     data = read_pkl_from_s3(bucket_name, file_name)
 
     print('Read Data:', data)
-
-    
     return data
 
 st.title("Trending Signals: Dynamic Weight Adjustment")
@@ -124,11 +134,12 @@ data_selection = st.sidebar.selectbox(
 data = load_data(data_selection)
 
 st.sidebar.header("Adjust Weights")
-frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.6, 0.1)
-recency_weight = st.sidebar.slider("Recency Weight", 0.0, 1.0, 0.3, 0.1)
+frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
+page_rank_weight = st.sidebar.slider("Page Rank", 0.0, 1.0, 0.3, 0.1)
+recency_weight = st.sidebar.slider("Recency Weight", 0.0, 1.0, 0.2, 0.1)
 authors_weight = st.sidebar.slider("Authors Weight", 0.0, 1.0, 0.1, 0.1)
 
-total_weight = frequency_weight + recency_weight + authors_weight
+total_weight = frequency_weight + page_rank_weight + recency_weight + authors_weight
 
 if not math.isclose(total_weight, 1.0, rel_tol=1e-6):
     st.warning("The total weight must sum to exactly 1. Adjust the sliders accordingly.")
@@ -136,6 +147,7 @@ if not math.isclose(total_weight, 1.0, rel_tol=1e-6):
 
 weights = {
     'frequency': frequency_weight,
+    'page_rank': page_rank_weight,
     'recency': recency_weight,
     'authors': authors_weight
 }

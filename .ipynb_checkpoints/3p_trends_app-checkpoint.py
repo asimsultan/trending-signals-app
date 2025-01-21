@@ -108,8 +108,6 @@ def load_data(selection):
     data = read_pkl_from_s3(bucket_name, file_name)
 
     print('Read Data:', data)
-
-    
     return data
 
 st.title("Trending Signals: Dynamic Weight Adjustment")
