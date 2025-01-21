@@ -7,28 +7,41 @@ import boto3
 import pickle
 import io, os
 
+
 # Authentication logic
 def login():
     st.sidebar.title("Login")
-    username = st.sidebar.text_input("Username")
-    password = st.sidebar.text_input("Password", type="password")
 
-    if username == st.secrets["USER_NAME"] and password == st.secrets["PASSWORD"]:
-        st.session_state["authenticated"] = True
-    else:
-        st.sidebar.error("Invalid credentials")
+    username = st.sidebar.text_input("Username", key="username")
+    password = st.sidebar.text_input("Password", type="password", key="password")
 
-# Authenticate user
-if "authenticated" not in st.session_state or not st.session_state["authenticated"]:
+    if st.sidebar.button("Login"):
+        name_key = os.getenv("USER_NAME")
+        password_key = os.getenv("PASSWORD")
+
+        if username == name_key and password == password_key:
+            st.session_state["authenticated"] = True
+            st.session_state["message"] = f"Welcome, {username}!"
+        else:
+            st.session_state["authenticated"] = False
+            st.sidebar.error("Invalid credentials")
+
+
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
     login()
     st.stop()
 
 # If authenticated, proceed with the app logic
-st.write("Welcome to the secured Streamlit app!")
+st.sidebar.success(st.session_state.get("message", "Welcome!"))
+
 
 # Preprocess dates function
 def preprocess_dates(date_col):
     return date_col.apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) and hasattr(x, 'tzinfo') else x)
+
 
 # Recency calculation function
 def calculate_recency(new_date, current_date):
@@ -37,6 +50,7 @@ def calculate_recency(new_date, current_date):
     days_diff = (current_date - new_date).days
     recency_score = 1 / (1 + np.exp(days_diff / 30))
     return recency_score
+
 
 # Ranking data processing
 def get_ranking_df(data, weights, data_selection):
@@ -62,15 +76,16 @@ def get_ranking_df(data, weights, data_selection):
     aggregated['page_rank_norm'] = aggregated['page_rank'] / max_page_rank
 
     aggregated['trending_signal_score'] = (
-        weights['frequency'] * aggregated['frequency_norm'] +
-        weights['recency'] * aggregated['recency_norm'] +
-        weights['authors'] * aggregated['num_authors_norm'] +
-        weights['page_rank'] * aggregated['page_rank_norm']
+            weights['frequency'] * aggregated['frequency_norm'] +
+            weights['recency'] * aggregated['recency_norm'] +
+            weights['authors'] * aggregated['num_authors_norm'] +
+            weights['page_rank'] * aggregated['page_rank_norm']
     )
 
     ranking_df = aggregated.reset_index()[['story_id', 'title', 'frequency', 'trending_signal_score']]
     ranking_df = ranking_df.sort_values(by='trending_signal_score', ascending=False)
     return ranking_df
+
 
 # Read data from S3
 def read_pkl_from_s3(bucket_name, object_name):
@@ -90,6 +105,7 @@ def read_pkl_from_s3(bucket_name, object_name):
         print(f"Error reading file: {e}")
         return None
 
+
 # Cache data loading
 @st.cache_data
 def load_data(selection):
@@ -99,6 +115,7 @@ def load_data(selection):
     # data = read_pkl_from_s3(bucket_name, file_name)
     data = pd.read_pickle(file_name)
     return data
+
 
 # App starts here for authenticated users
 st.title("Trending Signals: Dynamic Weight Adjustment")
