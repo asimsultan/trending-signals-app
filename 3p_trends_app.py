@@ -7,7 +7,6 @@ import boto3
 import pickle
 import io, os
 
-
 # Authentication logic
 def login():
     st.sidebar.title("Login")
@@ -33,9 +32,6 @@ if "authenticated" not in st.session_state:
 if not st.session_state["authenticated"]:
     login()
     st.stop()
-
-# If authenticated, proceed with the app logic
-st.sidebar.success(st.session_state.get("message", "Logged in Successfully!"))
 
 # Preprocess dates function
 def preprocess_dates(date_col):
