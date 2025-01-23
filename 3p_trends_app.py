@@ -51,34 +51,39 @@ def calculate_recency(new_date, current_date):
 def get_ranking_df(data, weights, data_selection):
     data['new_date'] = preprocess_dates(data['new_date'])
     current_date = datetime.now()
-
     max_frequency = data['story_id'].value_counts().max()
     max_recency = data['new_date'].apply(lambda x: calculate_recency(x, current_date)).max()
     max_authors = data['authors'].apply(len).max()
     max_page_rank = data['page_rank'].max()
-
     data['recency'] = data['new_date'].apply(lambda x: calculate_recency(x, current_date))
+
     aggregated = data.groupby('story_id').agg(
         frequency=('story_id', 'size'),
         title=('title', 'first'),
         recency=('recency', 'mean'),
+        date=('new_date', 'first'),
         num_authors=('authors', lambda x: x.apply(len).sum()),
         page_rank=('page_rank', 'mean')
     )
     aggregated['frequency_norm'] = aggregated['frequency'] / max_frequency
     aggregated['recency_norm'] = aggregated['recency'] / max_recency
+    # aggregated['source_popularity_norm'] = aggregated['source_popularity'] / max_source_popularity
     aggregated['num_authors_norm'] = aggregated['num_authors'] / max_authors
     aggregated['page_rank_norm'] = aggregated['page_rank'] / max_page_rank
 
-    aggregated['trending_signal_score'] = (
-            weights['frequency'] * aggregated['frequency_norm'] +
-            weights['recency'] * aggregated['recency_norm'] +
-            weights['authors'] * aggregated['num_authors_norm'] +
-            weights['page_rank'] * aggregated['page_rank_norm']
-    )
+    aggregated_frequency = weights['frequency'] * aggregated['frequency_norm']
+    aggregated_page_rank = weights['page_rank'] * aggregated['page_rank_norm']
+    aggregated_recency = weights['recency'] * aggregated['recency_norm']
+    aggregated_authors = weights['authors'] * aggregated['num_authors_norm']
 
-    ranking_df = aggregated.reset_index()[['story_id', 'title', 'frequency', 'trending_signal_score']]
+    aggregated['trending_signal_score'] = (
+            aggregated_frequency + aggregated_recency + aggregated_authors + aggregated_page_rank)
+
+    ranking_df = aggregated.reset_index()[
+        ['story_id', 'title', 'frequency', 'trending_signal_score', 'page_rank_norm', 'date']]
     ranking_df = ranking_df.sort_values(by='trending_signal_score', ascending=False)
+    ranking_df['story_id'] = ranking_df['story_id'].apply(
+        lambda x: f'<a href="https://ground.news/article/{x}" target="_blank">{x}</a>')
     return ranking_df
 
 
@@ -86,6 +91,7 @@ def get_ranking_df(data, weights, data_selection):
 def read_pkl_from_s3(bucket_name, object_name):
     aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
     aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY")
+
     s3_client = boto3.client(
         's3',
         aws_access_key_id=aws_access_key,
@@ -138,4 +144,4 @@ weights = {
 
 ranking_df = get_ranking_df(data, weights, data_selection)
 st.subheader("Top Trending Stories")
-st.dataframe(ranking_df)
+st.markdown(ranking_df.to_html(escape=False), unsafe_allow_html=True)
