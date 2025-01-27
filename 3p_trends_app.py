@@ -125,15 +125,14 @@ def get_latest_available_data(selection):
     max_days_to_check = 7  # Number of past days to check if today's data isn't available
     for i in range(max_days_to_check):
         check_date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-        bucket_name = f"trending-signal-bucket/{check_date}"
+        bucket_name = f"trending-signal-bucket/{check_date}/"
         file_name = 'Business_df.pkl' if selection == "Business" else 'Australia_df.pkl'
-
         try:
             data = read_pkl_from_s3(bucket_name, file_name)
             if data is not None:
-                return data  # Return the data if found
+                return data
         except Exception as e:
-            continue  # If data not found, continue to previous day
+            continue
 
     st.error("No data available for the past 7 days.")
     return None  # Return None if no data is found within the range
