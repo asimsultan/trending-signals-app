@@ -106,17 +106,43 @@ def read_pkl_from_s3(bucket_name, object_name):
         print(f"Error reading file: {e}")
         return None
 
-current_date = datetime.now().strftime("%Y-%m-%d")
+# current_date = datetime.now().strftime("%Y-%m-%d")
+# # Cache data loading
+# @st.cache_data
+# def load_data(selection):
+#     bucket_name = "trending-signal-bucket/"+current_date
+#     file_name = 'Business_df.pkl' if selection == "Business" else 'Australia_df.pkl'
+#     data = read_pkl_from_s3(bucket_name, file_name)
+#     # data = pd.read_pickle(file_name)
+#     return data
 
-# Cache data loading
+from datetime import datetime, timedelta
+import streamlit as st
+
+
+# Function to find the latest available date
+def get_latest_available_data(selection):
+    max_days_to_check = 7  # Number of past days to check if today's data isn't available
+    for i in range(max_days_to_check):
+        check_date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+        bucket_name = f"trending-signal-bucket/{check_date}"
+        file_name = 'Business_df.pkl' if selection == "Business" else 'Australia_df.pkl'
+
+        try:
+            data = read_pkl_from_s3(bucket_name, file_name)
+            if data is not None:
+                return data  # Return the data if found
+        except Exception as e:
+            continue  # If data not found, continue to previous day
+
+    st.error("No data available for the past 7 days.")
+    return None  # Return None if no data is found within the range
+
+
+# Cache data loading function
 @st.cache_data
 def load_data(selection):
-    bucket_name = "trending-signal-bucket/"+current_date
-    file_name = 'Business_df.pkl' if selection == "Business" else 'Australia_df.pkl'
-
-    data = read_pkl_from_s3(bucket_name, file_name)
-    # data = pd.read_pickle(file_name)
-    return data
+    return get_latest_available_data(selection)
 
 
 # App starts here for authenticated users
