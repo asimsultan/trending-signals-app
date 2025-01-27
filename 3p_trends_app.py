@@ -123,18 +123,20 @@ import streamlit as st
 # Function to find the latest available date
 def get_latest_available_data(selection):
     max_days_to_check = 7  # Number of past days to check if today's data isn't available
+    bucket_name = "trending-signal-bucket"  # Correct bucket name without the date
     for i in range(max_days_to_check):
         check_date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-        bucket_name = f"trending-signal-bucket/{check_date}/"
-        file_name = 'Business_df.pkl' if selection == "Business" else 'Australia_df.pkl'
+        object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
+        print(f"Checking: {bucket_name}/{object_key}")
         try:
-            data = read_pkl_from_s3(bucket_name, file_name)
+            data = read_pkl_from_s3(bucket_name, object_key)
             if data is not None:
                 return data
         except Exception as e:
+            print(f"Error for {object_key}: {e}")
             continue
 
-    st.error("No data available for the past 7 days.")
+    print("No data available for the past 7 days.")
     return None  # Return None if no data is found within the range
 
 
