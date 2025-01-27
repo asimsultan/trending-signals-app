@@ -106,11 +106,12 @@ def read_pkl_from_s3(bucket_name, object_name):
         print(f"Error reading file: {e}")
         return None
 
+current_date = datetime.now().strftime("%Y-%m-%d")
 
 # Cache data loading
 @st.cache_data
 def load_data(selection):
-    bucket_name = "trending-signal-bucket"
+    bucket_name = "trending-signal-bucket/"+current_date
     file_name = 'Business_df.pkl' if selection == "Business" else 'Australia_df.pkl'
 
     data = read_pkl_from_s3(bucket_name, file_name)
