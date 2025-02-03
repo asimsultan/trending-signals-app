@@ -27,12 +27,12 @@ def login():
             st.sidebar.error("Invalid credentials")
 
 
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
-
-if not st.session_state["authenticated"]:
-    login()
-    st.stop()
+# if "authenticated" not in st.session_state:
+#     st.session_state["authenticated"] = False
+#
+# if not st.session_state["authenticated"]:
+#     login()
+#     st.stop()
 
 # Preprocess dates function
 def preprocess_dates(date_col):
@@ -68,6 +68,10 @@ def get_ranking_df(data, weights, data_selection):
         views=('views', 'first'),
         internal_rank=('rank', 'first'),
         rank_mask=('rank_mask', 'first'),
+        top_designations=('top_designations', 'first'),
+        mediaCount=('mediaCount', 'first'),
+        sourceCount=('sourceCount', 'first')
+
     )
     aggregated['frequency_norm'] = aggregated['frequency'] / max_frequency
     aggregated['recency_norm'] = aggregated['recency'] / max_recency
@@ -84,7 +88,7 @@ def get_ranking_df(data, weights, data_selection):
             aggregated_frequency + aggregated_recency + aggregated_authors + aggregated_page_rank)
 
     ranking_df = aggregated.reset_index()[
-        ['story_id', 'title', 'frequency', 'trending_signal_score', 'page_rank_norm', 'views', 'internal_rank', 'rank_mask','date']]
+        ['story_id', 'title', 'frequency', 'trending_signal_score', 'page_rank_norm', 'views', 'internal_rank', 'rank_mask','top_designations', 'mediaCount', 'sourceCount', 'date']]
     ranking_df = ranking_df.sort_values(by='trending_signal_score', ascending=False)
     # ranking_df['story_id'] = ranking_df['story_id'].apply(
     #     lambda x: f'<a href="https://ground.news/article/{x}" target="_blank">{x}</a>')
@@ -92,7 +96,6 @@ def get_ranking_df(data, weights, data_selection):
     ranking_df['link'] = ranking_df['story_id'].apply(
         lambda x: f'https://ground.news/article/{x}')
     return ranking_df
-
 
 # Read data from S3
 def read_pkl_from_s3(bucket_name, object_name):
@@ -154,6 +157,8 @@ st.title("Trending Signals: Dynamic Weight Adjustment")
 st.sidebar.header("Data Selection")
 data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
 data = load_data(data_selection)
+
+print(data)
 
 st.sidebar.header("Adjust Weights")
 frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
