@@ -1,7 +1,8 @@
 import streamlit as st
+from st_aggrid import AgGrid, GridOptionsBuilder
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timedelta
 import math
 import boto3
 import pickle
@@ -63,7 +64,10 @@ def get_ranking_df(data, weights, data_selection):
         recency=('recency', 'mean'),
         date=('new_date', 'first'),
         num_authors=('authors', lambda x: x.apply(len).sum()),
-        page_rank=('page_rank', 'mean')
+        page_rank=('page_rank', 'mean'),
+        views=('views', 'first'),
+        internal_rank=('rank', 'first'),
+        rank_mask=('rank_mask', 'first'),
     )
     aggregated['frequency_norm'] = aggregated['frequency'] / max_frequency
     aggregated['recency_norm'] = aggregated['recency'] / max_recency
@@ -80,10 +84,13 @@ def get_ranking_df(data, weights, data_selection):
             aggregated_frequency + aggregated_recency + aggregated_authors + aggregated_page_rank)
 
     ranking_df = aggregated.reset_index()[
-        ['story_id', 'title', 'frequency', 'trending_signal_score', 'page_rank_norm', 'date']]
+        ['story_id', 'title', 'frequency', 'trending_signal_score', 'page_rank_norm', 'views', 'internal_rank', 'rank_mask','date']]
     ranking_df = ranking_df.sort_values(by='trending_signal_score', ascending=False)
-    ranking_df['story_id'] = ranking_df['story_id'].apply(
-        lambda x: f'<a href="https://ground.news/article/{x}" target="_blank">{x}</a>')
+    # ranking_df['story_id'] = ranking_df['story_id'].apply(
+    #     lambda x: f'<a href="https://ground.news/article/{x}" target="_blank">{x}</a>')
+
+    ranking_df['link'] = ranking_df['story_id'].apply(
+        lambda x: f'https://ground.news/article/{x}')
     return ranking_df
 
 
@@ -106,18 +113,16 @@ def read_pkl_from_s3(bucket_name, object_name):
         print(f"Error reading file: {e}")
         return None
 
-# current_date = datetime.now().strftime("%Y-%m-%d")
-# # Cache data loading
-# @st.cache_data
-# def load_data(selection):
-#     bucket_name = "trending-signal-bucket/"+current_date
-#     file_name = 'Business_df.pkl' if selection == "Business" else 'Australia_df.pkl'
-#     data = read_pkl_from_s3(bucket_name, file_name)
-#     # data = pd.read_pickle(file_name)
-#     return data
+current_date = datetime.now().strftime("%Y-%m-%d")
+# Cache data loading
+@st.cache_data
+def load_data(selection):
+    bucket_name = "trending-signal-bucket/"+current_date
+    file_name = 'Business_df.pkl' if selection == "Business" else 'Australia_df.pkl'
+    data = read_pkl_from_s3(bucket_name, file_name)
+    # data = pd.read_pickle(file_name)
+    return data
 
-from datetime import datetime, timedelta
-import streamlit as st
 
 
 # Function to find the latest available date
@@ -137,17 +142,15 @@ def get_latest_available_data(selection):
             continue
 
     print("No data available for the past 7 days.")
-    return None  # Return None if no data is found within the range
+    return None
 
-
-# Cache data loading function
 @st.cache_data
 def load_data(selection):
+    # return pd.read_pickle('Business_df.pkl')
     return get_latest_available_data(selection)
 
-
-# App starts here for authenticated users
 st.title("Trending Signals: Dynamic Weight Adjustment")
+
 st.sidebar.header("Data Selection")
 data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
 data = load_data(data_selection)
@@ -158,6 +161,7 @@ page_rank_weight = st.sidebar.slider("Page Rank", 0.0, 1.0, 0.3, 0.1)
 recency_weight = st.sidebar.slider("Recency Weight", 0.0, 1.0, 0.2, 0.1)
 authors_weight = st.sidebar.slider("Authors Weight", 0.0, 1.0, 0.1, 0.1)
 
+# Ensure weights sum to 1
 total_weight = frequency_weight + page_rank_weight + recency_weight + authors_weight
 if not math.isclose(total_weight, 1.0, rel_tol=1e-6):
     st.warning("The total weight must sum to exactly 1. Adjust the sliders accordingly.")
@@ -170,6 +174,46 @@ weights = {
     'authors': authors_weight
 }
 
+# Get ranking DataFrame
 ranking_df = get_ranking_df(data, weights, data_selection)
 st.subheader("Top Trending Stories")
-st.markdown(ranking_df.to_html(escape=False), unsafe_allow_html=True)
+
+gb = GridOptionsBuilder.from_dataframe(ranking_df)
+gb.configure_column(
+    "link",
+    header_name="Story link",
+    cellRenderer="""
+        function(params) {
+            return `<a href="${params.value}" target="_blank" style="text-decoration: none;">
+                        <span style="color: blue; font-size: 16px;">&#x1F517;</span>
+                    </a>`;
+        }
+    """  # Render a blue link icon (Unicode &#x1F517;)
+)
+
+
+gb.configure_default_column(
+    resizable=True,  # Enable resizing
+    sortable=True,  # Enable sorting
+    filter=True,    # Enable filtering
+)
+
+grid_options = gb.build()
+grid_options.update({
+    "domLayout": "autoHeight",  # Makes the table height flexible
+    "animateRows": True,  # Enables row animation
+    "suppressRowVirtualisation": True,  # Renders all rows (disables virtualisation)
+    "rowBuffer": 10,  # Adds buffer for smoother scrolling
+    "cellFlashDuration": 700,  # Sets flash duration for cell changes
+    "cellFadeDuration": 1000,  # Sets fade-out duration for cell flashes
+    "ensureDomOrder": True,  # Ensures consistent DOM order for accessibility
+    "suppressMaxRenderedRowRestriction": True,  # Allows rendering more than 500 rows
+})
+
+AgGrid(
+    ranking_df,
+    gridOptions=grid_options,
+    allow_unsafe_jscode=True,  # Allow HTML rendering
+    enable_enterprise_modules=True,  # Enable advanced enterprise features
+    height=600,  # Initial height of the table
+)

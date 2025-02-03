@@ -5,3 +5,5 @@ matplotlib
 seaborn
 wordcloud
 boto3
+streamlit_authenticator
+streamlit-aggrid
