@@ -185,9 +185,48 @@ st.subheader("Top Trending Stories")
 
 gb = GridOptionsBuilder.from_dataframe(ranking_df)
 
-# Configure strict column widths
-gb.configure_column("story_id", header_name="Story ID", width=150, maxWidth=180)
-gb.configure_column("title", header_name="Title", width=180, maxWidth=220)
+gb.configure_column(
+    "story_id",
+    header_name="Story ID",
+    width=150,
+    maxWidth=180,
+    filter=True,  # Enable filtering
+    filterParams={"filter": "agTextColumnFilter"},  # Use text-based filter
+    floatingFilter=True,  # Show search box under the column header
+)
+
+gb.configure_column(
+    "title",
+    header_name="Title",
+    width=180,
+    maxWidth=280,
+    filter=True,  # Enable filtering
+    filterParams={"filter": "agTextColumnFilter"},  # Use text-based filter
+    floatingFilter=True,  # Show search box under the column header
+)
+
+gb.configure_column(
+    "top_designations",
+    header_name="Top Designations",
+    width=120,
+    maxWidth=170,
+    filter=True,  # Enable filtering
+    filterParams={"filter": "agTextColumnFilter"},  # Use text-based filter
+    floatingFilter=True,  # Show search box under the column header
+)
+
+gb.configure_column(
+    "rank_mask",
+    header_name="Rank",
+    width=150,
+    maxWidth=250,
+    filter=True,  # Enable filtering
+    filterParams={"filter": "agTextColumnFilter"},  # Use text-based filter
+    floatingFilter=True,  # Show search box under the column header
+)
+
+gb.configure_column("mediaCount", header_name="Media Count", width=130, maxWidth=150)
+gb.configure_column("sourceCount", header_name="Source Count", width=130, maxWidth=150)
 gb.configure_column("frequency", header_name="Frequency", width=40, maxWidth=120)
 gb.configure_column("trending_signal_score", header_name="Signal Score", width=150, maxWidth=120)
 gb.configure_column("page_rank_norm", header_name="Page Rank", width=100, maxWidth=120)
