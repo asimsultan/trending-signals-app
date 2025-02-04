@@ -38,7 +38,6 @@ if not st.session_state["authenticated"]:
 def preprocess_dates(date_col):
     return date_col.apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) and hasattr(x, 'tzinfo') else x)
 
-
 # Recency calculation function
 def calculate_recency(new_date, current_date):
     if pd.isnull(new_date):
