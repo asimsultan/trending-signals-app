@@ -27,12 +27,12 @@ def login():
             st.sidebar.error("Invalid credentials")
 
 
-# if "authenticated" not in st.session_state:
-#     st.session_state["authenticated"] = False
-#
-# if not st.session_state["authenticated"]:
-#     login()
-#     st.stop()
+if "authenticated" not in st.session_state:
+    st.session_state["authenticated"] = False
+
+if not st.session_state["authenticated"]:
+    login()
+    st.stop()
 
 # Preprocess dates function
 def preprocess_dates(date_col):
