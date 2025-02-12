@@ -286,12 +286,8 @@ def show_aggregator_scores():
     st.title("Aggregator Scores")
 
     bucket_name = "trending-signal-bucket"
-    object_name = '2025-02-11/Aggregated_results_feb12.csv'
+    object_name = '2025-02-11/Aggregated_results_feb12.pkl'
     data = read_pkl_from_s3(bucket_name, object_name)
-
-    # data = pd.read_csv('../Trending_Signals/Aggregated_results_feb12.csv')
-    data['aggregator_counts'] = data['aggregator_counts'].str.extract(r"\['(.*?)'\]")
-
     # Create grid options builder
     gb = GridOptionsBuilder.from_dataframe(data)
 
