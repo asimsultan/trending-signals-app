@@ -285,10 +285,11 @@ def show_trending_scores():
 def show_aggregator_scores():
     st.title("Aggregator Scores")
 
-    st.sidebar.header("Data Selection")
-    data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
-    # data = load_data(data_selection)
-    data = pd.read_csv('../Trending_Signals/Aggregated_results_feb12.csv')
+    bucket_name = "trending-signal-bucket"
+    object_name = '2025-02-11/Aggregated_results_feb12.csv'
+    data = read_pkl_from_s3(bucket_name, object_name)
+
+    # data = pd.read_csv('../Trending_Signals/Aggregated_results_feb12.csv')
     data['aggregator_counts'] = data['aggregator_counts'].str.extract(r"\['(.*?)'\]")
 
     # Create grid options builder
