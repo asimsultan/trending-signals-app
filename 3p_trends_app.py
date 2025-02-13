@@ -119,7 +119,6 @@ def read_pkl_from_s3(bucket_name, object_name):
         print(f"Error reading file: {e}")
         return None
 
-
 def get_latest_available_data(selection):
     max_days_to_check = 7  # Number of past days to check if today's data isn't available
     bucket_name = "trending-signal-bucket"  # Correct bucket name without the date
@@ -130,7 +129,7 @@ def get_latest_available_data(selection):
         try:
             data = read_pkl_from_s3(bucket_name, object_key)
             if data is not None:
-                return data
+                return data, check_date
         except Exception as e:
             print(f"Error for {object_key}: {e}")
             continue
@@ -140,7 +139,8 @@ def get_latest_available_data(selection):
 
 @st.cache_data
 def load_data(selection):
-    return get_latest_available_data(selection)
+    data, the_date  = get_latest_available_data(selection)
+    return data
 
 
 def setup_grid_options(df):
@@ -227,9 +227,14 @@ def setup_grid_options(df):
     })
     return grid_options
 
+from datetime import datetime
 
 def show_trending_scores():
     st.title("Trending Signals: Dynamic Weight Adjustment")
+    current_date = datetime.now().strftime("%b %d, %Y")
+    st.markdown(
+        f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>The given data is fetched on {current_date}</div>",
+        unsafe_allow_html=True)
 
     st.sidebar.header("Data Selection")
     data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
@@ -284,6 +289,11 @@ def show_trending_scores():
 
 def show_aggregator_scores():
     st.title("Aggregator Scores")
+
+    current_date = datetime.now().strftime("%b %d, %Y")
+    st.markdown(
+        f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>The given data is fetched on {current_date}</div>",
+        unsafe_allow_html=True)
 
     bucket_name = "trending-signal-bucket"
     object_name = '2025-02-11/Aggregated_results_feb12.pkl'
