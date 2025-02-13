@@ -160,7 +160,7 @@ def setup_grid_options(df):
         "title",
         header_name="Title",
         width=180,
-        maxWidth=280,
+        maxWidth=380,
         filter=True,  # Enable filtering
         filterParams={"filter": "agTextColumnFilter"},  # Use text-based filter
         floatingFilter=True,  # Show search box under the column header
@@ -296,7 +296,7 @@ def show_aggregator_scores():
         unsafe_allow_html=True)
 
     bucket_name = "trending-signal-bucket"
-    object_name = '2025-02-11/Aggregated_results_feb12.pkl'
+    object_name = '2025-02-13/Aggregated_results_feb13.pkl'
     data = read_pkl_from_s3(bucket_name, object_name)
     # Create grid options builder
     gb = GridOptionsBuilder.from_dataframe(data)
@@ -367,10 +367,8 @@ def main():
         login()
         st.stop()
 
-    # Show navigation buttons after successful login
     show_navigation()
 
-    # Display the selected page
     if st.session_state.get("current_page") == "trending":
         show_trending_scores()
     elif st.session_state.get("current_page") == "aggregator":
