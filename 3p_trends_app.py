@@ -2,12 +2,11 @@ import streamlit as st
 from st_aggrid import AgGrid, GridOptionsBuilder
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
+from datetime import timedelta
 import math
 import boto3
 import pickle
 import io, os
-
 
 # Authentication logic
 def login():
@@ -287,6 +286,17 @@ def show_trending_scores():
     )
 
 
+def format_rank_per_story(value):
+    if isinstance(value, dict):
+        return ", ".join([f"{key}: {', '.join(map(str, val))}" for key, val in value.items()])
+    return str(value)  # Convert any other type to string
+
+def format_repeated_mentions(value):
+    if isinstance(value, dict):
+        return ", ".join([f"{key}: {val}" for key, val in value.items()])
+    return str(value)  # Convert other types to string
+
+
 def show_aggregator_scores():
     st.title("Aggregator Scores")
 
@@ -298,11 +308,16 @@ def show_aggregator_scores():
     bucket_name = "trending-signal-bucket"
     object_name = '2025-02-13/Aggregated_results_feb13.pkl'
     data = read_pkl_from_s3(bucket_name, object_name)
+
+    data["rank_per_story"] = data["rank_per_story"].apply(format_rank_per_story)
+    data["repeated_mentions"] = data["repeated_mentions"].apply(format_repeated_mentions)
+
     # Create grid options builder
     gb = GridOptionsBuilder.from_dataframe(data)
 
     # Configure columns
     gb.configure_column("story_id", header_name="Story ID", width=150)
+    gb.configure_column("title", header_name="Title", width=250)
     gb.configure_column("aggregator_score", header_name="Aggregator Score", width=150)
     gb.configure_column("aggregator_counts", header_name="Aggregator Counts", width=200)
     gb.configure_column("rank_per_story", header_name="Rank per Story", width=200)
