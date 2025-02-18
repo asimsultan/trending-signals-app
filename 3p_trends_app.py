@@ -306,7 +306,8 @@ def show_aggregator_scores():
         unsafe_allow_html=True)
 
     bucket_name = "trending-signal-bucket"
-    object_name = '2025-02-13/Aggregated_results_feb13.pkl'
+    # object_name = '2025-02-13/Aggregated_results_feb13.pkl'
+    object_name = '2025-02-18/Aggregated_results_feb18.pkl'
     data = read_pkl_from_s3(bucket_name, object_name)
 
     data["rank_per_story"] = data["rank_per_story"].apply(format_rank_per_story)
