@@ -7,3 +7,7 @@ wordcloud
 boto3
 streamlit_authenticator
 streamlit-aggrid
+gspread
+oauth2client
+python-dotenv
+watchdog

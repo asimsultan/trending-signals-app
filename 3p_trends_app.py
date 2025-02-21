@@ -7,6 +7,10 @@ import math
 import boto3
 import pickle
 import io, os
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+import re
+
 
 # Authentication logic
 def login():
@@ -37,6 +41,9 @@ def show_navigation():
     if st.sidebar.button("Aggregator Scores"):
         st.session_state["current_page"] = "aggregator"
         st.rerun()
+    if st.sidebar.button("Overall View"):
+        st.session_state["current_page"] = "overall"
+        st.rerun()
 
 
 # Your existing functions remain the same
@@ -54,7 +61,7 @@ def calculate_recency(new_date, current_date):
 
 def get_ranking_df(data, weights, data_selection):
     data['new_date'] = preprocess_dates(data['new_date'])
-    current_date = datetime.now()
+    current_date = pd.Timestamp.now()
     max_frequency = data['story_id'].value_counts().max()
     max_recency = data['new_date'].apply(lambda x: calculate_recency(x, current_date)).max()
     max_authors = data['authors'].apply(len).max()
@@ -91,7 +98,8 @@ def get_ranking_df(data, weights, data_selection):
             aggregated_frequency + aggregated_recency + aggregated_authors + aggregated_page_rank)
 
     ranking_df = aggregated.reset_index()[
-        ['story_id', 'title', 'frequency', 'trending_signal_score', 'page_rank_norm', 'views', 'internal_rank', 'rank_mask','top_designations', 'mediaCount', 'sourceCount', 'date']]
+        ['story_id', 'title', 'frequency', 'trending_signal_score', 'page_rank_norm', 'views', 'internal_rank',
+         'rank_mask', 'top_designations', 'mediaCount', 'sourceCount', 'date']]
     ranking_df = ranking_df.sort_values(by='trending_signal_score', ascending=False)
     # ranking_df['story_id'] = ranking_df['story_id'].apply(
     #     lambda x: f'<a href="https://ground.news/article/{x}" target="_blank">{x}</a>')
@@ -99,6 +107,7 @@ def get_ranking_df(data, weights, data_selection):
     ranking_df['link'] = ranking_df['story_id'].apply(
         lambda x: f'https://ground.news/article/{x}')
     return ranking_df
+
 
 def read_pkl_from_s3(bucket_name, object_name):
     aws_access_key = os.getenv("AWS_ACCESS_KEY_ID")
@@ -118,11 +127,12 @@ def read_pkl_from_s3(bucket_name, object_name):
         print(f"Error reading file: {e}")
         return None
 
+
 def get_latest_available_data(selection):
     max_days_to_check = 7  # Number of past days to check if today's data isn't available
     bucket_name = "trending-signal-bucket"  # Correct bucket name without the date
     for i in range(max_days_to_check):
-        check_date = (datetime.now() - timedelta(days=i)).strftime("%Y-%m-%d")
+        check_date = (pd.Timestamp.now() - timedelta(days=i)).strftime("%Y-%m-%d")
         object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
         print(f"Checking: {bucket_name}/{object_key}")
         try:
@@ -136,9 +146,10 @@ def get_latest_available_data(selection):
     print("No data available for the past 7 days.")
     return None
 
+
 @st.cache_data
 def load_data(selection):
-    data, the_date  = get_latest_available_data(selection)
+    data, the_date = get_latest_available_data(selection)
     return data
 
 
@@ -226,11 +237,13 @@ def setup_grid_options(df):
     })
     return grid_options
 
+
 from datetime import datetime
+
 
 def show_trending_scores():
     st.title("Trending Signals: Dynamic Weight Adjustment")
-    current_date = datetime.now().strftime("%b %d, %Y")
+    current_date = pd.Timestamp.now().strftime("%b %d, %Y")
     st.markdown(
         f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>The given data is fetched on {current_date}</div>",
         unsafe_allow_html=True)
@@ -285,11 +298,19 @@ def show_trending_scores():
         use_container_width=False,
     )
 
+    if st.button('Export to Google Sheets'):
+        try:
+            url = export_to_gsheet(ranking_df, "Trending Signals Data")  # Pass ranking_df here
+            st.success(f'Data exported successfully! [Open Sheet]({url})')
+        except Exception as e:
+            st.error(f'Error exporting data: {str(e)}')
+
 
 def format_rank_per_story(value):
     if isinstance(value, dict):
         return ", ".join([f"{key}: {', '.join(map(str, val))}" for key, val in value.items()])
     return str(value)  # Convert any other type to string
+
 
 def format_repeated_mentions(value):
     if isinstance(value, dict):
@@ -300,18 +321,41 @@ def format_repeated_mentions(value):
 def show_aggregator_scores():
     st.title("Aggregator Scores")
 
-    current_date = datetime.now().strftime("%b %d, %Y")
+    current_date = pd.Timestamp.now().strftime("%b %d, %Y")
     st.markdown(
         f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>The given data is fetched on {current_date}</div>",
         unsafe_allow_html=True)
 
+    # Add weight sliders in sidebar
+    st.sidebar.header("Adjust Aggregator Weights")
+    agg_counts_weight = st.sidebar.slider("Aggregator Counts Weight", 0.0, 1.0, 0.4, 0.1)
+    rank_story_weight = st.sidebar.slider("Rank per Story Weight", 0.0, 1.0, 0.3, 0.1)
+    repeated_mentions_weight = st.sidebar.slider("Repeated Mentions Weight", 0.0, 1.0, 0.2, 0.1)
+    recency_weight = st.sidebar.slider("Date Recency Weight", 0.0, 1.0, 0.1, 0.1)
+
+    # Validate weights sum to 1
+    total_weight = agg_counts_weight + rank_story_weight + repeated_mentions_weight + recency_weight
+    if not math.isclose(total_weight, 1.0, rel_tol=1e-6):
+        st.warning("The total weight must sum to exactly 1. Adjust the sliders accordingly.")
+        return
+
     bucket_name = "trending-signal-bucket"
-    # object_name = '2025-02-13/Aggregated_results_feb13.pkl'
-    object_name = '2025-02-18/Aggregated_results_feb18.pkl'
+    object_name = '2025-02-19/Aggregated_results_feb19.pkl'
     data = read_pkl_from_s3(bucket_name, object_name)
 
     data["rank_per_story"] = data["rank_per_story"].apply(format_rank_per_story)
     data["repeated_mentions"] = data["repeated_mentions"].apply(format_repeated_mentions)
+
+    print('Column names:')
+    print(data.columns)
+
+    # Process the data and calculate aggregator score
+    # data = calculate_aggregator_score(data, {
+    #     'agg_counts': agg_counts_weight,
+    #     'rank_story': rank_story_weight,
+    #     'repeated_mentions': repeated_mentions_weight,
+    #     'recency': recency_weight
+    # })
 
     # Create grid options builder
     gb = GridOptionsBuilder.from_dataframe(data)
@@ -375,6 +419,233 @@ def show_aggregator_scores():
         use_container_width=False
     )
 
+    if st.button('Export to Google Sheets'):
+        try:
+            url = export_to_gsheet(data, "Aggregator Scores Data")  # Pass data here
+            st.success(f'Data exported successfully! [Open Sheet]({url})')
+        except Exception as e:
+            st.error(f'Error exporting data: {str(e)}')
+
+
+def show_overall_view():
+    st.title("Overall Story Analysis")
+
+    current_date = datetime.now().strftime("%b %d, %Y")
+    st.markdown(
+        f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>Data fetched on {current_date}</div>",
+        unsafe_allow_html=True
+    )
+
+    # Load both trending and aggregator data
+    data_selection = "Business"  # Default to Business data
+    trending_data = load_data(data_selection)
+
+    bucket_name = "trending-signal-bucket"
+    object_name = '2025-02-19/Aggregated_results_feb19.pkl'
+    aggregator_data = read_pkl_from_s3(bucket_name, object_name)
+
+    # Calculate trending scores with default weights
+    weights = {
+        'frequency': 0.4,
+        'page_rank': 0.3,
+        'recency': 0.2,
+        'authors': 0.1
+    }
+    trending_df = get_ranking_df(trending_data, weights, data_selection)
+
+    # Get the set of story IDs from both datasets
+    trending_story_ids = set(trending_df['story_id'])
+    aggregator_story_ids = set(aggregator_data['story_id'])
+
+    # Find the intersection of story IDs
+    common_story_ids = trending_story_ids.intersection(aggregator_story_ids)
+
+    # Filter both dataframes to include only common stories
+    trending_df_filtered = trending_df[trending_df['story_id'].isin(common_story_ids)]
+    aggregator_data_filtered = aggregator_data[aggregator_data['story_id'].isin(common_story_ids)]
+
+    # Create stats about the intersection
+    total_trending = len(trending_story_ids)
+    total_aggregator = len(aggregator_story_ids)
+    total_common = len(common_story_ids)
+
+    # Display intersection statistics
+    st.sidebar.markdown("### Data Overview")
+    st.sidebar.markdown(f"Total stories in Trending: {total_trending}")
+    st.sidebar.markdown(f"Total stories in Aggregator: {total_aggregator}")
+    st.sidebar.markdown(f"Stories present in both: {total_common}")
+
+    # Create combined dataframe with only common stories
+    overall_df = pd.DataFrame()
+    overall_df['Story_id'] = trending_df_filtered['story_id']
+    overall_df['Trending_score'] = trending_df_filtered['trending_signal_score']
+    overall_df['Legacy_score'] = trending_df_filtered['internal_rank']
+
+    # Add Aggregator score by merging with filtered aggregator data
+    aggregator_scores = aggregator_data_filtered[['story_id', 'aggregator_score']].copy()
+    overall_df = overall_df.merge(aggregator_scores, left_on='Story_id', right_on='story_id', how='inner')
+    overall_df['Aggregator_score'] = overall_df['aggregator_score']
+
+    # Add date, link and story title
+    overall_df['date'] = trending_df_filtered['date']
+    overall_df['link'] = trending_df_filtered['link']
+    overall_df['story_title'] = trending_df_filtered['title']
+
+    # Clean up and organize columns
+    overall_df = overall_df[
+        ['Story_id', 'story_title', 'Trending_score', 'Aggregator_score', 'Legacy_score', 'date', 'link']]
+
+    # Configure grid options for overall view
+    gb = GridOptionsBuilder.from_dataframe(overall_df)
+
+    gb.configure_column("Story_id", width=150)
+    gb.configure_column("story_title", header_name="Story Title", width=300)
+    gb.configure_column("Trending_score", width=150)
+    gb.configure_column("Legacy_score", width=150)
+    gb.configure_column("Aggregator_score", width=150)
+    gb.configure_column("date", width=150)
+
+    gb.configure_column(
+        "link",
+        header_name="Story Link",
+        width=80,
+        cellRenderer="""
+            function(params) {
+                return `<a href="${params.value}" target="_blank" style="text-decoration: none;">
+                            <span style="color: blue; font-size: 16px;">🔗</span>
+                        </a>`;
+            }
+        """
+    )
+
+    grid_options = gb.build()
+    grid_options.update({
+        "domLayout": "autoHeight",
+        "animateRows": True,
+        "suppressRowVirtualisation": True,
+        "rowBuffer": 10,
+        "cellFlashDuration": 700,
+        "cellFadeDuration": 1000,
+        "ensureDomOrder": True,
+        "suppressMaxRenderedRowRestriction": True,
+        "suppressAutoSize": True,
+        "defaultColDef": {
+            "suppressSizeToFit": True,
+            "filter": True,
+            "filterParams": {"filter": "agTextColumnFilter"},
+            "floatingFilter": True
+        }
+    })
+
+    st.markdown("""
+        <style>
+        .ag-theme-streamlit {
+            width: 100%;
+            max-width: 1500px;
+            min-width: 1200px;
+            margin: auto;
+            overflow: auto;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    AgGrid(
+        overall_df,
+        gridOptions=grid_options,
+        allow_unsafe_jscode=True,
+        enable_enterprise_modules=True,
+        height=600,
+        use_container_width=False
+    )
+
+    if st.button('Export to Google Sheets'):
+        try:
+            url = export_to_gsheet(overall_df, "Aggregator Scores Data")  # Pass data here
+            st.success(f'Data exported successfully! [Open Sheet]({url})')
+        except Exception as e:
+            st.error(f'Error exporting data: {str(e)}')
+
+
+def export_to_gsheet(df, sheet_name="Trending Signals Data"):
+    # Convert DataFrame to handle Timestamp objects
+    df = df.copy()
+
+    # Convert all datetime columns to string format
+    for col in df.columns:
+        if df[col].dtype == 'datetime64[ns]':
+            df[col] = df[col].dt.strftime('%Y-%m-%d %H:%M:%S')
+        elif df[col].dtype == 'object':
+            df[col] = df[col].astype(str)
+
+    # Convert any remaining non-string values to strings
+    df = df.astype(str)
+
+    # Define the scope
+    scope = [
+        'https://spreadsheets.google.com/feeds',
+        'https://www.googleapis.com/auth/drive',
+        'https://www.googleapis.com/auth/spreadsheets'
+    ]
+
+    try:
+        # Create credentials dict from Streamlit secrets
+        credentials_dict = {
+            "type": st.secrets["gcp_service_account"]["type"],
+            "project_id": st.secrets["gcp_service_account"]["project_id"],
+            "private_key_id": st.secrets["gcp_service_account"]["private_key_id"],
+            "private_key": st.secrets["gcp_service_account"]["private_key"],
+            "client_email": st.secrets["gcp_service_account"]["client_email"],
+            "client_id": st.secrets["gcp_service_account"]["client_id"],
+            "auth_uri": st.secrets["gcp_service_account"]["auth_uri"],
+            "token_uri": st.secrets["gcp_service_account"]["token_uri"],
+            "auth_provider_x509_cert_url": st.secrets["gcp_service_account"]["auth_provider_x509_cert_url"],
+            "client_x509_cert_url": st.secrets["gcp_service_account"]["client_x509_cert_url"]
+        }
+
+        # Authenticate using the credentials dictionary
+        credentials = ServiceAccountCredentials.from_json_keyfile_dict(credentials_dict, scope)
+        client = gspread.authorize(credentials)
+
+        # Create a timestamp-based unique sheet name
+        timestamp = pd.Timestamp.now().strftime("%Y%m%d_%H%M%S")
+        unique_sheet_name = f"{sheet_name}_{timestamp}"
+
+        # Create a new spreadsheet
+        spreadsheet = client.create(unique_sheet_name)
+        sheet = spreadsheet.sheet1
+
+        # Share with specific emails
+        emails_to_share = [
+            'asim@ground.news',
+            'asimsultan2@gmail.com',
+            'haris@ground.news',
+            'chuck@ground.news'
+        ]
+
+        # Share with each email
+        for email in emails_to_share:
+            spreadsheet.share(
+                email,
+                perm_type='user',
+                role='writer',
+                notify=True  # Send email notification
+            )
+
+        # Convert dataframe to list of lists
+        data = [df.columns.values.tolist()] + df.values.tolist()
+
+        # Update the sheet with data
+        sheet.clear()
+        sheet.update(data)
+
+        # Get the spreadsheet URL
+        sheet_url = f"https://docs.google.com/spreadsheets/d/{spreadsheet.id}"
+        return sheet_url
+
+    except Exception as e:
+        raise Exception(f"Error in Google Sheets export: {str(e)}")
+
+
 def main():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
@@ -389,9 +660,13 @@ def main():
         show_trending_scores()
     elif st.session_state.get("current_page") == "aggregator":
         show_aggregator_scores()
+    elif st.session_state.get("current_page") == "overall":
+        show_overall_view()
     else:
         st.title("Welcome to the Dashboard")
-        st.write("Please select Trending Scores or Aggregator Scores from the sidebar to begin.")
+        st.write("Please select Trending Scores, Aggregator Scores, or Overall View from the sidebar to begin.")
+
 
 if __name__ == "__main__":
+    print('Starting the application now...')
     main()
