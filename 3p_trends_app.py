@@ -436,15 +436,17 @@ def show_overall_view():
         unsafe_allow_html=True
     )
 
-    # Load both trending and aggregator data
     data_selection = "Business"  # Default to Business data
-    trending_data = load_data(data_selection)
+    # trending_data = load_data(data_selection)
 
-    bucket_name = "trending-signal-bucket"
-    object_name = '2025-02-19/Aggregated_results_feb19.pkl'
-    aggregator_data = read_pkl_from_s3(bucket_name, object_name)
+    trending_data = pd.read_pickle('../Trending_Signals/Business_df.pkl')
 
-    # Calculate trending scores with default weights
+    # bucket_name = "trending-signal-bucket"
+    # object_name = '2025-02-19/Aggregated_results_feb19.pkl'
+    # aggregator_data = read_pkl_from_s3(bucket_name, object_name)
+
+    aggregator_data = pd.read_pickle('../Trending_Signals/trending_signals_ingested/Aggregated_results_feb19.pkl')
+
     weights = {
         'frequency': 0.4,
         'page_rank': 0.3,
@@ -453,56 +455,36 @@ def show_overall_view():
     }
     trending_df = get_ranking_df(trending_data, weights, data_selection)
 
-    # Get the set of story IDs from both datasets
     trending_story_ids = set(trending_df['story_id'])
     aggregator_story_ids = set(aggregator_data['story_id'])
 
-    # Find the intersection of story IDs
     common_story_ids = trending_story_ids.intersection(aggregator_story_ids)
 
-    # Filter both dataframes to include only common stories
     trending_df_filtered = trending_df[trending_df['story_id'].isin(common_story_ids)]
     aggregator_data_filtered = aggregator_data[aggregator_data['story_id'].isin(common_story_ids)]
 
-    # Create stats about the intersection
     total_trending = len(trending_story_ids)
     total_aggregator = len(aggregator_story_ids)
     total_common = len(common_story_ids)
 
-    # Display intersection statistics
     st.sidebar.markdown("### Data Overview")
     st.sidebar.markdown(f"Total stories in Trending: {total_trending}")
     st.sidebar.markdown(f"Total stories in Aggregator: {total_aggregator}")
     st.sidebar.markdown(f"Stories present in both: {total_common}")
 
-    # Create combined dataframe with only common stories
-    overall_df = pd.DataFrame()
-    overall_df['Story_id'] = trending_df_filtered['story_id']
-    overall_df['Trending_score'] = trending_df_filtered['trending_signal_score']
-    overall_df['Legacy_score'] = trending_df_filtered['internal_rank']
-
-    # Add Aggregator score by merging with filtered aggregator data
-    aggregator_scores = aggregator_data_filtered[['story_id', 'aggregator_score']].copy()
-    overall_df = overall_df.merge(aggregator_scores, left_on='Story_id', right_on='story_id', how='inner')
-    overall_df['Aggregator_score'] = overall_df['aggregator_score']
-
-    # Add date, link and story title
-    overall_df['date'] = trending_df_filtered['date']
-    overall_df['link'] = trending_df_filtered['link']
-    overall_df['story_title'] = trending_df_filtered['title']
-
-    # Clean up and organize columns
+    overall_df = trending_df_filtered.merge(aggregator_data_filtered, on='story_id', how='inner')
     overall_df = overall_df[
-        ['Story_id', 'story_title', 'Trending_score', 'Aggregator_score', 'Legacy_score', 'date', 'link']]
+        ['story_id', 'title_x', 'trending_signal_score', 'aggregator_score', 'internal_rank', 'date_x', 'link_x']]
 
-    # Configure grid options for overall view
+    overall_df = overall_df.rename(
+        columns={"title_x": "title", "internal_rank": "legacy_score", "date_x": "date", "link_x": "link"})
     gb = GridOptionsBuilder.from_dataframe(overall_df)
 
-    gb.configure_column("Story_id", width=150)
-    gb.configure_column("story_title", header_name="Story Title", width=300)
-    gb.configure_column("Trending_score", width=150)
-    gb.configure_column("Legacy_score", width=150)
-    gb.configure_column("Aggregator_score", width=150)
+    gb.configure_column("story_id", width=150)
+    gb.configure_column("title", header_name="Story Title", width=300)
+    gb.configure_column("trending_signal_score", width=150)
+    gb.configure_column("legacy_score", width=150)
+    gb.configure_column("aggregator_score", width=150)
     gb.configure_column("date", width=150)
 
     gb.configure_column(
@@ -647,12 +629,12 @@ def export_to_gsheet(df, sheet_name="Trending Signals Data"):
 
 
 def main():
-    if "authenticated" not in st.session_state:
-        st.session_state["authenticated"] = False
-
-    if not st.session_state["authenticated"]:
-        login()
-        st.stop()
+    # if "authenticated" not in st.session_state:
+    #     st.session_state["authenticated"] = False
+    #
+    # if not st.session_state["authenticated"]:
+    #     login()
+    #     st.stop()
 
     show_navigation()
 
