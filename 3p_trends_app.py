@@ -482,11 +482,12 @@ def show_overall_view():
     st.sidebar.markdown(f"Stories present in both: {total_common}")
 
     overall_df = trending_df_filtered.merge(aggregator_data_filtered, on='story_id', how='inner')
+    print('Columns are here:', overall_df.columns)
     overall_df = overall_df[
-        ['story_id', 'title_x', 'trending_signal_score', 'aggregator_score', 'internal_rank', 'date_x', 'link_x']]
+        ['story_id', 'title_x', 'trending_signal_score', 'aggregator_score', 'internal_rank', 'rank_mask_x', 'date_x', 'link_x']]
 
     overall_df = overall_df.rename(
-        columns={"title_x": "title", "internal_rank": "legacy_score", "date_x": "date", "link_x": "link"})
+        columns={"title_x": "title", "internal_rank": "legacy_score", "rank_mask_x": "rank_mask", "date_x": "date", "link_x": "link"})
     gb = GridOptionsBuilder.from_dataframe(overall_df)
 
     gb.configure_column("story_id", width=150)
