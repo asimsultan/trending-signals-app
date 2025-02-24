@@ -128,30 +128,40 @@ def read_pkl_from_s3(bucket_name, object_name):
         return None
 
 
-def get_latest_available_data(selection):
+def get_latest_available_data(selection, category):
     max_days_to_check = 7  # Number of past days to check if today's data isn't available
     bucket_name = "trending-signal-bucket"  # Correct bucket name without the date
     for i in range(max_days_to_check):
         check_date = (pd.Timestamp.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-        object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
-        print(f"Checking: {bucket_name}/{object_key}")
-        try:
-            data = read_pkl_from_s3(bucket_name, object_key)
-            if data is not None:
-                return data, check_date
-        except Exception as e:
-            print(f"Error for {object_key}: {e}")
-            continue
+
+        if category=='trending':
+            object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
+            print(f"Checking: {bucket_name}/{object_key}")
+            try:
+                data = read_pkl_from_s3(bucket_name, object_key)
+                if data is not None:
+                    return data, check_date
+            except Exception as e:
+                print(f"Error for {object_key}: {e}")
+                continue
+        elif category=='aggregator':
+            object_key = f"{check_date}/Aggregated_results.pkl"
+            print(f"Checking: {bucket_name}/{object_key}")
+            try:
+                data = read_pkl_from_s3(bucket_name, object_key)
+                if data is not None:
+                    return data, check_date
+            except Exception as e:
+                print(f"Error for {object_key}: {e}")
+                continue
 
     print("No data available for the past 7 days.")
     return None
 
-
 @st.cache_data
-def load_data(selection):
-    data, the_date = get_latest_available_data(selection)
+def load_data(selection, category):
+    data, the_date = get_latest_available_data(selection, category)
     return data
-
 
 def setup_grid_options(df):
     gb = GridOptionsBuilder.from_dataframe(df)
@@ -250,7 +260,7 @@ def show_trending_scores():
 
     st.sidebar.header("Data Selection")
     data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
-    data = load_data(data_selection)
+    data = load_data(data_selection, category='trending')
 
     st.sidebar.header("Adjust Weights")
     frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
@@ -339,15 +349,13 @@ def show_aggregator_scores():
         st.warning("The total weight must sum to exactly 1. Adjust the sliders accordingly.")
         return
 
-    bucket_name = "trending-signal-bucket"
-    object_name = '2025-02-19/Aggregated_results_feb19.pkl'
-    data = read_pkl_from_s3(bucket_name, object_name)
+    aggregator_data = load_data('', category='aggregator')
 
-    data["rank_per_story"] = data["rank_per_story"].apply(format_rank_per_story)
-    data["repeated_mentions"] = data["repeated_mentions"].apply(format_repeated_mentions)
+    aggregator_data["rank_per_story"] = aggregator_data["rank_per_story"].apply(format_rank_per_story)
+    aggregator_data["repeated_mentions"] = aggregator_data["repeated_mentions"].apply(format_repeated_mentions)
 
     print('Column names:')
-    print(data.columns)
+    print(aggregator_data.columns)
 
     # Process the data and calculate aggregator score
     # data = calculate_aggregator_score(data, {
@@ -358,7 +366,7 @@ def show_aggregator_scores():
     # })
 
     # Create grid options builder
-    gb = GridOptionsBuilder.from_dataframe(data)
+    gb = GridOptionsBuilder.from_dataframe(aggregator_data)
 
     # Configure columns
     gb.configure_column("story_id", header_name="Story ID", width=150)
@@ -411,7 +419,7 @@ def show_aggregator_scores():
     st.subheader("Aggregator Results")
 
     AgGrid(
-        data,
+        aggregator_data,
         gridOptions=grid_options,
         allow_unsafe_jscode=True,
         enable_enterprise_modules=True,
@@ -421,7 +429,7 @@ def show_aggregator_scores():
 
     if st.button('Export to Google Sheets'):
         try:
-            url = export_to_gsheet(data, "Aggregator Scores Data")  # Pass data here
+            url = export_to_gsheet(aggregator_data, "Aggregator Scores Data")  # Pass data here
             st.success(f'Data exported successfully! [Open Sheet]({url})')
         except Exception as e:
             st.error(f'Error exporting data: {str(e)}')
@@ -437,15 +445,16 @@ def show_overall_view():
     )
 
     data_selection = "Business"  # Default to Business data
-    # trending_data = load_data(data_selection)
-
-    trending_data = pd.read_pickle('../Trending_Signals/Business_df.pkl')
+    trending_data = load_data(data_selection, category='trending')
+    # trending_data = pd.read_pickle('../Trending_Signals/Business_df.pkl')
 
     # bucket_name = "trending-signal-bucket"
     # object_name = '2025-02-19/Aggregated_results_feb19.pkl'
     # aggregator_data = read_pkl_from_s3(bucket_name, object_name)
 
-    aggregator_data = pd.read_pickle('../Trending_Signals/trending_signals_ingested/Aggregated_results_feb19.pkl')
+    aggregator_data = load_data(data_selection, category='aggregator')
+
+    # aggregator_data = pd.read_pickle('../Trending_Signals/trending_signals_ingested/Aggregated_results_feb19.pkl')
 
     weights = {
         'frequency': 0.4,
@@ -629,12 +638,12 @@ def export_to_gsheet(df, sheet_name="Trending Signals Data"):
 
 
 def main():
-    # if "authenticated" not in st.session_state:
-    #     st.session_state["authenticated"] = False
-    #
-    # if not st.session_state["authenticated"]:
-    #     login()
-    #     st.stop()
+    if "authenticated" not in st.session_state:
+        st.session_state["authenticated"] = False
+
+    if not st.session_state["authenticated"]:
+        login()
+        st.stop()
 
     show_navigation()
 
