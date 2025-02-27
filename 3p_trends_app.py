@@ -9,7 +9,6 @@ import pickle
 import io, os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
-import re
 
 
 # Authentication logic
@@ -40,6 +39,9 @@ def show_navigation():
         st.rerun()
     if st.sidebar.button("Aggregator Scores"):
         st.session_state["current_page"] = "aggregator"
+        st.rerun()
+    if st.sidebar.button("Reddit Signals"):
+        st.session_state["current_page"] = "reddit"
         st.rerun()
     if st.sidebar.button("Overall View"):
         st.session_state["current_page"] = "overall"
@@ -134,7 +136,7 @@ def get_latest_available_data(selection, category):
     for i in range(max_days_to_check):
         check_date = (pd.Timestamp.now() - timedelta(days=i)).strftime("%Y-%m-%d")
 
-        if category=='trending':
+        if category == 'trending':
             object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
             print(f"Checking: {bucket_name}/{object_key}")
             try:
@@ -144,8 +146,18 @@ def get_latest_available_data(selection, category):
             except Exception as e:
                 print(f"Error for {object_key}: {e}")
                 continue
-        elif category=='aggregator':
+        elif category == 'aggregator':
             object_key = f"{check_date}/Aggregated_results.pkl"
+            print(f"Checking: {bucket_name}/{object_key}")
+            try:
+                data = read_pkl_from_s3(bucket_name, object_key)
+                if data is not None:
+                    return data, check_date
+            except Exception as e:
+                print(f"Error for {object_key}: {e}")
+                continue
+        elif category == 'reddit':  # Add Reddit category
+            object_key = f"{check_date}/Reddit_signals.pkl"
             print(f"Checking: {bucket_name}/{object_key}")
             try:
                 data = read_pkl_from_s3(bucket_name, object_key)
@@ -156,12 +168,14 @@ def get_latest_available_data(selection, category):
                 continue
 
     print("No data available for the past 7 days.")
-    return None
+    return None, None
+
 
 @st.cache_data
 def load_data(selection, category):
     data, the_date = get_latest_available_data(selection, category)
     return data
+
 
 def setup_grid_options(df):
     gb = GridOptionsBuilder.from_dataframe(df)
@@ -484,10 +498,12 @@ def show_overall_view():
     overall_df = trending_df_filtered.merge(aggregator_data_filtered, on='story_id', how='inner')
     print('Columns are here:', overall_df.columns)
     overall_df = overall_df[
-        ['story_id', 'title_x', 'trending_signal_score', 'aggregator_score', 'internal_rank', 'rank_mask_x', 'date_x', 'link_x']]
+        ['story_id', 'title_x', 'trending_signal_score', 'aggregator_score', 'internal_rank', 'rank_mask_x', 'date_x',
+         'link_x']]
 
     overall_df = overall_df.rename(
-        columns={"title_x": "title", "internal_rank": "legacy_score", "rank_mask_x": "rank_mask", "date_x": "date", "link_x": "link"})
+        columns={"title_x": "title", "internal_rank": "legacy_score", "rank_mask_x": "rank_mask", "date_x": "date",
+                 "link_x": "link"})
     gb = GridOptionsBuilder.from_dataframe(overall_df)
 
     gb.configure_column("story_id", width=150)
@@ -638,6 +654,66 @@ def export_to_gsheet(df, sheet_name="Trending Signals Data"):
         raise Exception(f"Error in Google Sheets export: {str(e)}")
 
 
+def show_reddit_signals():
+    st.title("Reddit Signals Analysis")
+
+    current_date = datetime.now().strftime("%b %d, %Y")
+    st.markdown(
+        f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>Data fetched on {current_date}</div>",
+        unsafe_allow_html=True
+    )
+
+    # Load Reddit data using existing function
+    data = load_data('', category='reddit')
+
+    if data is None:
+        st.error("Unable to load Reddit signals data")
+        return
+
+    # Create grid options
+    gb = GridOptionsBuilder.from_dataframe(data)
+
+    # Configure columns based on your data structure
+    for column in data.columns:
+        gb.configure_column(
+            column,
+            header_name=column.replace('_', ' ').title(),
+            filter=True,
+            filterParams={"filter": "agTextColumnFilter"},
+            floatingFilter=True
+        )
+
+    grid_options = gb.build()
+    grid_options.update({
+        "domLayout": "autoHeight",
+        "animateRows": True,
+        "suppressRowVirtualisation": True,
+        "rowBuffer": 10,
+        "cellFlashDuration": 700,
+        "cellFadeDuration": 1000,
+        "ensureDomOrder": True,
+        "suppressMaxRenderedRowRestriction": True,
+        "suppressAutoSize": True,
+        "defaultColDef": {"suppressSizeToFit": True}
+    })
+
+    AgGrid(
+        data,
+        gridOptions=grid_options,
+        allow_unsafe_jscode=True,
+        enable_enterprise_modules=True,
+        height=200,
+        use_container_width=False
+    )
+
+    if st.button('Export to Google Sheets'):
+        try:
+            url = export_to_gsheet(data, "Reddit Signals Data")
+            st.success(f'Data exported successfully! [Open Sheet]({url})')
+        except Exception as e:
+            st.error(f'Error exporting data: {str(e)}')
+
+
 def main():
     if "authenticated" not in st.session_state:
         st.session_state["authenticated"] = False
@@ -654,9 +730,11 @@ def main():
         show_aggregator_scores()
     elif st.session_state.get("current_page") == "overall":
         show_overall_view()
+    elif st.session_state.get("current_page") == "reddit":
+        show_reddit_signals()
     else:
         st.title("Welcome to the Dashboard")
-        st.write("Please select Trending Scores, Aggregator Scores, or Overall View from the sidebar to begin.")
+        st.write("Please select an option from the sidebar to begin.")
 
 
 if __name__ == "__main__":
