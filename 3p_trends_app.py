@@ -702,7 +702,7 @@ def show_reddit_signals():
         gridOptions=grid_options,
         allow_unsafe_jscode=True,
         enable_enterprise_modules=True,
-        height=200,
+        height=600,
         use_container_width=False
     )
 
