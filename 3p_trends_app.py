@@ -440,7 +440,7 @@ def show_aggregator_scores():
         st.warning("The total weight must sum to exactly 1. Adjust the sliders accordingly.")
         return
 
-    aggregator_data = load_data('', category='aggregator')
+    aggregator_data = load_data('', category='aggregator', apply_themes=True)
 
     aggregator_data["rank_per_story"] = aggregator_data["rank_per_story"].apply(format_rank_per_story)
     aggregator_data["repeated_mentions"] = aggregator_data["repeated_mentions"].apply(format_repeated_mentions)
@@ -528,14 +528,14 @@ def show_overall_view():
     )
 
     data_selection = "Business"  # Default to Business data
-    trending_data = load_data(data_selection, category='trending')
+    trending_data = load_data(data_selection, category='trending', apply_themes=False)
     # trending_data = pd.read_pickle('../Trending_Signals/Business_df.pkl')
 
     # bucket_name = "trending-signal-bucket"
     # object_name = '2025-02-19/Aggregated_results_feb19.pkl'
     # aggregator_data = read_pkl_from_s3(bucket_name, object_name)
 
-    aggregator_data = load_data(data_selection, category='aggregator')
+    aggregator_data = load_data(data_selection, category='aggregator', apply_themes=False)
 
     # aggregator_data = pd.read_pickle('../Trending_Signals/trending_signals_ingested/Aggregated_results_feb19.pkl')
 
@@ -733,7 +733,7 @@ def show_reddit_signals():
     )
 
     # Load Reddit data using existing function
-    data = load_data('', category='reddit')
+    data = load_data('', category='reddit', apply_themes=False)
 
     if data is None:
         st.error("Unable to load Reddit signals data")
