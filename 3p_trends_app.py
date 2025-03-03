@@ -130,14 +130,21 @@ def read_pkl_from_s3(bucket_name, object_name):
         return None
 
 
-def get_latest_available_data(selection, category):
+def get_latest_available_data(selection, category, apply_themes):
     max_days_to_check = 7  # Number of past days to check if today's data isn't available
     bucket_name = "trending-signal-bucket"  # Correct bucket name without the date
     for i in range(max_days_to_check):
         check_date = (pd.Timestamp.now() - timedelta(days=i)).strftime("%Y-%m-%d")
 
         if category == 'trending':
-            object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
+
+
+            if apply_themes==False:
+                print('Reading Unfiltered one')
+                object_key = f"{check_date}/Business_df_unfiltered.pkl" if selection == "Business" else f"{check_date}/Australia_df_unfiltered.pkl"
+                print(object_key)
+            else:
+                object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
             print(f"Checking: {bucket_name}/{object_key}")
             try:
                 data = read_pkl_from_s3(bucket_name, object_key)
@@ -172,8 +179,8 @@ def get_latest_available_data(selection, category):
 
 
 @st.cache_data
-def load_data(selection, category):
-    data, the_date = get_latest_available_data(selection, category)
+def load_data(selection, category, apply_themes):
+    data, the_date = get_latest_available_data(selection, category, apply_themes)
     return data
 
 
@@ -267,6 +274,7 @@ from datetime import datetime
 
 def show_trending_scores():
     st.title("Trending Signals: Dynamic Weight Adjustment")
+    apply_themes = st.sidebar.toggle("Apply Themes/Interests", value=False)
     current_date = pd.Timestamp.now().strftime("%b %d, %Y")
     st.markdown(
         f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>The given data is fetched on {current_date}</div>",
@@ -274,7 +282,10 @@ def show_trending_scores():
 
     st.sidebar.header("Data Selection")
     data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
-    data = load_data(data_selection, category='trending')
+
+    data = load_data(data_selection, category='trending', apply_themes=apply_themes)
+
+    print(data)
 
     st.sidebar.header("Adjust Weights")
     frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
@@ -297,7 +308,9 @@ def show_trending_scores():
     ranking_df = get_ranking_df(data, weights, data_selection)
     grid_options = setup_grid_options(ranking_df)
 
-    st.subheader("Top Trending Stories")
+    # Display which data version is being used
+    theme_status = "with" if apply_themes else "without"
+    st.subheader(f"Top Trending Stories ({theme_status} Themes/Interests)")
 
     custom_css = """
         <style>
@@ -328,6 +341,70 @@ def show_trending_scores():
             st.success(f'Data exported successfully! [Open Sheet]({url})')
         except Exception as e:
             st.error(f'Error exporting data: {str(e)}')
+
+# def show_trending_scores():
+#     st.title("Trending Signals: Dynamic Weight Adjustment")
+#     current_date = pd.Timestamp.now().strftime("%b %d, %Y")
+#     st.markdown(
+#         f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>The given data is fetched on {current_date}</div>",
+#         unsafe_allow_html=True)
+#
+#     st.sidebar.header("Data Selection")
+#     data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
+#     data = load_data(data_selection, category='trending')
+#
+#     st.sidebar.header("Adjust Weights")
+#     frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
+#     page_rank_weight = st.sidebar.slider("Page Rank", 0.0, 1.0, 0.3, 0.1)
+#     recency_weight = st.sidebar.slider("Recency Weight", 0.0, 1.0, 0.2, 0.1)
+#     authors_weight = st.sidebar.slider("Authors Weight", 0.0, 1.0, 0.1, 0.1)
+#
+#     total_weight = frequency_weight + page_rank_weight + recency_weight + authors_weight
+#     if not math.isclose(total_weight, 1.0, rel_tol=1e-6):
+#         st.warning("The total weight must sum to exactly 1. Adjust the sliders accordingly.")
+#         return
+#
+#     weights = {
+#         'frequency': frequency_weight,
+#         'page_rank': page_rank_weight,
+#         'recency': recency_weight,
+#         'authors': authors_weight
+#     }
+#
+#     ranking_df = get_ranking_df(data, weights, data_selection)
+#     grid_options = setup_grid_options(ranking_df)
+#
+#     st.subheader("Top Trending Stories")
+#
+#     custom_css = """
+#         <style>
+#         .ag-theme-streamlit {
+#             width: 100%; /* Expand table to full width */
+#             max-width: 1500px; /* Increase the maximum width for the table */
+#             min-width: 1200px; /* Set a minimum width for better visibility */
+#             margin: auto; /* Center the table on the page */
+#             overflow: auto; /* Allow scrolling if necessary */
+#         }
+#         </style>
+#     """
+#
+#     st.markdown(custom_css, unsafe_allow_html=True)
+#
+#     AgGrid(
+#         ranking_df,
+#         gridOptions=grid_options,
+#         allow_unsafe_jscode=True,
+#         enable_enterprise_modules=True,
+#         height=600,
+#         use_container_width=False,
+#     )
+#
+#     if st.button('Export to Google Sheets'):
+#         try:
+#             url = export_to_gsheet(ranking_df, "Trending Signals Data")  # Pass ranking_df here
+#             st.success(f'Data exported successfully! [Open Sheet]({url})')
+#         except Exception as e:
+#             st.error(f'Error exporting data: {str(e)}')
 
 
 def format_rank_per_story(value):
@@ -370,14 +447,6 @@ def show_aggregator_scores():
 
     print('Column names:')
     print(aggregator_data.columns)
-
-    # Process the data and calculate aggregator score
-    # data = calculate_aggregator_score(data, {
-    #     'agg_counts': agg_counts_weight,
-    #     'rank_story': rank_story_weight,
-    #     'repeated_mentions': repeated_mentions_weight,
-    #     'recency': recency_weight
-    # })
 
     # Create grid options builder
     gb = GridOptionsBuilder.from_dataframe(aggregator_data)
