@@ -137,8 +137,6 @@ def get_latest_available_data(selection, category, apply_themes):
         check_date = (pd.Timestamp.now() - timedelta(days=i)).strftime("%Y-%m-%d")
 
         if category == 'trending':
-
-
             if apply_themes==False:
                 print('Reading Unfiltered one')
                 object_key = f"{check_date}/Business_df_unfiltered.pkl" if selection == "Business" else f"{check_date}/Australia_df_unfiltered.pkl"
@@ -168,6 +166,9 @@ def get_latest_available_data(selection, category, apply_themes):
             print(f"Checking: {bucket_name}/{object_key}")
             try:
                 data = read_pkl_from_s3(bucket_name, object_key)
+                print(data.columns)
+                data = data[['storyId', 'title', 'downvotes', 'upvotes', 'createdAt', 'url', 'storyUrl', 'redditLink',
+                             'velocity', 'compositeScore', 'normalizedScore', 'subredditRoute']]
                 if data is not None:
                     return data, check_date
             except Exception as e:
@@ -284,8 +285,6 @@ def show_trending_scores():
     data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
 
     data = load_data(data_selection, category='trending', apply_themes=apply_themes)
-
-    print(data)
 
     st.sidebar.header("Adjust Weights")
     frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
@@ -536,7 +535,7 @@ def show_overall_view():
     # aggregator_data = read_pkl_from_s3(bucket_name, object_name)
 
     aggregator_data = load_data(data_selection, category='aggregator', apply_themes=False)
-
+    reddit_data = load_data('', category='reddit', apply_themes=False )
     # aggregator_data = pd.read_pickle('../Trending_Signals/trending_signals_ingested/Aggregated_results_feb19.pkl')
 
     weights = {
@@ -549,30 +548,40 @@ def show_overall_view():
 
     trending_story_ids = set(trending_df['story_id'])
     aggregator_story_ids = set(aggregator_data['story_id'])
+    reddit_story_ids = set(reddit_data['storyId'])
 
     common_story_ids = trending_story_ids.intersection(aggregator_story_ids)
+    common_story_ids = common_story_ids.intersection(reddit_story_ids)
 
     trending_df_filtered = trending_df[trending_df['story_id'].isin(common_story_ids)]
     aggregator_data_filtered = aggregator_data[aggregator_data['story_id'].isin(common_story_ids)]
+    reddit_data_filtered = reddit_data[reddit_data['storyId'].isin(common_story_ids)]
 
     total_trending = len(trending_story_ids)
     total_aggregator = len(aggregator_story_ids)
+    total_reddit = len(reddit_story_ids)
     total_common = len(common_story_ids)
 
     st.sidebar.markdown("### Data Overview")
     st.sidebar.markdown(f"Total stories in Trending: {total_trending}")
     st.sidebar.markdown(f"Total stories in Aggregator: {total_aggregator}")
-    st.sidebar.markdown(f"Stories present in both: {total_common}")
+    st.sidebar.markdown(f"Total stories in Reddit: {total_reddit}")
+    st.sidebar.markdown(f"Stories present in All: {total_common}")
 
     overall_df = trending_df_filtered.merge(aggregator_data_filtered, on='story_id', how='inner')
+    overall_df = overall_df.merge(reddit_data_filtered, left_on='story_id', right_on='storyId', how='inner')
+    overall_df.drop_duplicates(subset=['story_id'], inplace=True)
     print('Columns are here:', overall_df.columns)
     overall_df = overall_df[
-        ['story_id', 'title_x', 'trending_signal_score', 'aggregator_score', 'internal_rank', 'rank_mask_x', 'date_x',
-         'link_x']]
-
+        ['story_id', 'title_x', 'trending_signal_score', 'aggregator_score', 'compositeScore', 'internal_rank',
+         'rank_mask_x', 'date_x', 'link_x', 'upvotes', 'downvotes', 'createdAt', 'url', 'storyUrl', 'redditLink',
+         'velocity', 'normalizedScore']]
     overall_df = overall_df.rename(
         columns={"title_x": "title", "internal_rank": "legacy_score", "rank_mask_x": "rank_mask", "date_x": "date",
-                 "link_x": "link"})
+                 "link_x": "link", "compositeScore": "reddit_signal_score"})
+    # overall_df = overall_df[['story_id', 'title_x', 'trending_signal_score', 'aggregator_score', 'internal_rank', 'rank_mask_x', 'date_x', 'link_x']]
+    # overall_df = overall_df.rename(
+    #     columns={"title_x": "title", "internal_rank": "legacy_score", "rank_mask_x": "rank_mask", "date_x": "date", "link_x": "link"})
     gb = GridOptionsBuilder.from_dataframe(overall_df)
 
     gb.configure_column("story_id", width=150)
