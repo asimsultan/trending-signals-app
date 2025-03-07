@@ -743,6 +743,8 @@ def show_reddit_signals():
 
     # Load Reddit data using existing function
     data = load_data('', category='reddit', apply_themes=False)
+    data = data.sort_values(by='compositeScore', ascending=False)
+
 
     if data is None:
         st.error("Unable to load Reddit signals data")
