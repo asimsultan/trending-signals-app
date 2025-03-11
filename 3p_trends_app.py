@@ -166,7 +166,9 @@ def get_latest_available_data(selection, category, apply_themes):
             print(f"Checking: {bucket_name}/{object_key}")
             try:
                 data = read_pkl_from_s3(bucket_name, object_key)
-                print(data.columns)
+                data['date'] = pd.to_datetime(data['createdAt'])
+                one_day_ago = pd.Timestamp.utcnow() - pd.Timedelta(hours=36)
+                data = data[data['date'] >= one_day_ago]
                 data = data[['storyId', 'title', 'downvotes', 'upvotes', 'createdAt', 'url', 'storyUrl', 'redditLink',
                              'velocity', 'compositeScore', 'normalizedScore', 'subredditRoute']]
                 if data is not None:
@@ -801,7 +803,7 @@ def main():
     if not st.session_state["authenticated"]:
         login()
         st.stop()
-
+    #
     show_navigation()
 
     if st.session_state.get("current_page") == "trending":
