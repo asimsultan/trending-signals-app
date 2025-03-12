@@ -85,7 +85,10 @@ def get_ranking_df(data, weights, data_selection):
         sourceCount=('sourceCount', 'first')
 
     )
+    print('Aggregated Columns:', aggregated.shape)
+
     aggregated['frequency_norm'] = aggregated['frequency'] / max_frequency
+
     aggregated['recency_norm'] = aggregated['recency'] / max_recency
     # aggregated['source_popularity_norm'] = aggregated['source_popularity'] / max_source_popularity
     aggregated['num_authors_norm'] = aggregated['num_authors'] / max_authors
@@ -166,11 +169,16 @@ def get_latest_available_data(selection, category, apply_themes):
             print(f"Checking: {bucket_name}/{object_key}")
             try:
                 data = read_pkl_from_s3(bucket_name, object_key)
-                data['date'] = pd.to_datetime(data['createdAt'])
-                one_day_ago = pd.Timestamp.utcnow() - pd.Timedelta(hours=36)
-                data = data[data['date'] >= one_day_ago]
-                data = data[['storyId', 'title', 'downvotes', 'upvotes', 'createdAt', 'url', 'storyUrl', 'redditLink',
-                             'velocity', 'compositeScore', 'normalizedScore', 'subredditRoute']]
+                print('Un-filtered columns:', data.columns)
+                # data['date'] = pd.to_datetime(data['createdAt'])
+                # one_day_ago = pd.Timestamp.utcnow() - pd.Timedelta(hours=36)
+                # data = data[data['date'] >= one_day_ago]
+                # data = data[['storyId', 'title', 'downvotes', 'upvotes', 'createdAt', 'url', 'storyUrl', 'redditLink',
+                #              'velocity', 'compositeScore', 'normalizedScore', 'subredditRoute', 'subreddit_frequency']]
+                first_columns = ["storyId", "title", "compositeScore", "rank_mask", "subreddit_count"]
+                data = data[first_columns + [col for col in data.columns if col not in first_columns]]
+                print('Filtered columns:', data.columns)
+
                 if data is not None:
                     return data, check_date
             except Exception as e:
@@ -747,6 +755,8 @@ def show_reddit_signals():
     data = load_data('', category='reddit', apply_themes=False)
     data = data.sort_values(by='compositeScore', ascending=False)
 
+    print('Data Columns')
+    print(data.columns)
 
     if data is None:
         st.error("Unable to load Reddit signals data")
@@ -817,7 +827,6 @@ def main():
     else:
         st.title("Welcome to the Dashboard")
         st.write("Please select an option from the sidebar to begin.")
-
 
 if __name__ == "__main__":
     print('Starting the application now...')
