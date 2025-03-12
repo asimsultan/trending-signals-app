@@ -580,10 +580,12 @@ def show_overall_view():
 
     overall_df = trending_df_filtered.merge(aggregator_data_filtered, on='story_id', how='inner')
     overall_df = overall_df.merge(reddit_data_filtered, left_on='story_id', right_on='storyId', how='inner')
-    overall_df.drop_duplicates(subset=['story_id'], inplace=True)
     print('Columns are here:', overall_df.columns)
+    overall_df.drop_duplicates(subset=['storyId'], inplace=True)
+
+
     overall_df = overall_df[
-        ['story_id', 'title_x', 'trending_signal_score', 'aggregator_score', 'compositeScore', 'internal_rank',
+        ['storyId', 'title_x', 'trending_signal_score', 'aggregator_score', 'compositeScore', 'internal_rank',
          'rank_mask_x', 'date_x', 'link_x', 'upvotes', 'downvotes', 'createdAt', 'url', 'storyUrl', 'redditLink',
          'velocity', 'normalizedScore']]
     overall_df = overall_df.rename(
@@ -813,7 +815,7 @@ def main():
     if not st.session_state["authenticated"]:
         login()
         st.stop()
-    #
+
     show_navigation()
 
     if st.session_state.get("current_page") == "trending":
