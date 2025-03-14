@@ -50,7 +50,7 @@ def show_navigation():
         st.rerun()
     if st.sidebar.button("Export Report"):
         try:
-            with open("reddit_report.pdf", "rb") as pdf_file:
+            with open("business_trending_report.pdf", "rb") as pdf_file:
                 pdf_bytes = pdf_file.read()
             st.download_button(
                 label="Download Report",
