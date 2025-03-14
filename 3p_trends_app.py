@@ -9,9 +9,9 @@ import pickle
 import io, os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
 
 
-# Authentication logic
 def login():
     st.sidebar.title("Login")
     username = st.sidebar.text_input("Username", key="username")
@@ -31,6 +31,8 @@ def login():
             st.session_state["authenticated"] = False
             st.sidebar.error("Invalid credentials")
 
+import base64  # For encoding the PDF
+
 
 def show_navigation():
     st.sidebar.header("Navigation")
@@ -46,12 +48,23 @@ def show_navigation():
     if st.sidebar.button("Overall View"):
         st.session_state["current_page"] = "overall"
         st.rerun()
+    if st.sidebar.button("Export Report"):
+        try:
+            with open("reddit_report.pdf", "rb") as pdf_file:
+                pdf_bytes = pdf_file.read()
+            st.download_button(
+                label="Download Report",
+                data=pdf_bytes,
+                file_name="reddit_report.pdf",
+                mime="application/pdf"
+            )
+        except FileNotFoundError:
+            st.error("Report file 'report.pdf' not found.")
+        except Exception as e:
+            st.error(f"An error occurred: {e}")
 
-
-# Your existing functions remain the same
 def preprocess_dates(date_col):
     return date_col.apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) and hasattr(x, 'tzinfo') else x)
-
 
 def calculate_recency(new_date, current_date):
     if pd.isnull(new_date):
@@ -59,7 +72,6 @@ def calculate_recency(new_date, current_date):
     days_diff = (current_date - new_date).days
     recency_score = 1 / (1 + np.exp(days_diff / 30))
     return recency_score
-
 
 def get_ranking_df(data, weights, data_selection):
     data['new_date'] = preprocess_dates(data['new_date'])
@@ -266,22 +278,18 @@ def setup_grid_options(df):
     grid_options = gb.build()
 
     grid_options.update({
-        "domLayout": "autoHeight",  # Flexible height
-        "animateRows": True,  # Enables row animation
-        "suppressRowVirtualisation": True,  # Renders all rows
-        "rowBuffer": 10,  # Buffer for smooth scrolling
-        "cellFlashDuration": 700,  # Flash duration for cell changes
-        "cellFadeDuration": 1000,  # Fade-out duration for flash
-        "ensureDomOrder": True,  # Accessibility feature
-        "suppressMaxRenderedRowRestriction": True,  # Render more than 500 rows
-        "suppressAutoSize": True,  # Prevent columns from resizing automatically
-        "defaultColDef": {"suppressSizeToFit": True},  # Prevent individual column resizing
+        "domLayout": "autoHeight",
+        "animateRows": True,
+        "suppressRowVirtualisation": True,
+        "rowBuffer": 10,
+        "cellFlashDuration": 700,
+        "cellFadeDuration": 1000,
+        "ensureDomOrder": True,
+        "suppressMaxRenderedRowRestriction": True,
+        "suppressAutoSize": True,
+        "defaultColDef": {"suppressSizeToFit": True},
     })
     return grid_options
-
-
-from datetime import datetime
-
 
 def show_trending_scores():
     st.title("Trending Signals: Dynamic Weight Adjustment")
@@ -350,70 +358,6 @@ def show_trending_scores():
             st.success(f'Data exported successfully! [Open Sheet]({url})')
         except Exception as e:
             st.error(f'Error exporting data: {str(e)}')
-
-# def show_trending_scores():
-#     st.title("Trending Signals: Dynamic Weight Adjustment")
-#     current_date = pd.Timestamp.now().strftime("%b %d, %Y")
-#     st.markdown(
-#         f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>The given data is fetched on {current_date}</div>",
-#         unsafe_allow_html=True)
-#
-#     st.sidebar.header("Data Selection")
-#     data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
-#     data = load_data(data_selection, category='trending')
-#
-#     st.sidebar.header("Adjust Weights")
-#     frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
-#     page_rank_weight = st.sidebar.slider("Page Rank", 0.0, 1.0, 0.3, 0.1)
-#     recency_weight = st.sidebar.slider("Recency Weight", 0.0, 1.0, 0.2, 0.1)
-#     authors_weight = st.sidebar.slider("Authors Weight", 0.0, 1.0, 0.1, 0.1)
-#
-#     total_weight = frequency_weight + page_rank_weight + recency_weight + authors_weight
-#     if not math.isclose(total_weight, 1.0, rel_tol=1e-6):
-#         st.warning("The total weight must sum to exactly 1. Adjust the sliders accordingly.")
-#         return
-#
-#     weights = {
-#         'frequency': frequency_weight,
-#         'page_rank': page_rank_weight,
-#         'recency': recency_weight,
-#         'authors': authors_weight
-#     }
-#
-#     ranking_df = get_ranking_df(data, weights, data_selection)
-#     grid_options = setup_grid_options(ranking_df)
-#
-#     st.subheader("Top Trending Stories")
-#
-#     custom_css = """
-#         <style>
-#         .ag-theme-streamlit {
-#             width: 100%; /* Expand table to full width */
-#             max-width: 1500px; /* Increase the maximum width for the table */
-#             min-width: 1200px; /* Set a minimum width for better visibility */
-#             margin: auto; /* Center the table on the page */
-#             overflow: auto; /* Allow scrolling if necessary */
-#         }
-#         </style>
-#     """
-#
-#     st.markdown(custom_css, unsafe_allow_html=True)
-#
-#     AgGrid(
-#         ranking_df,
-#         gridOptions=grid_options,
-#         allow_unsafe_jscode=True,
-#         enable_enterprise_modules=True,
-#         height=600,
-#         use_container_width=False,
-#     )
-#
-#     if st.button('Export to Google Sheets'):
-#         try:
-#             url = export_to_gsheet(ranking_df, "Trending Signals Data")  # Pass ranking_df here
-#             st.success(f'Data exported successfully! [Open Sheet]({url})')
-#         except Exception as e:
-#             st.error(f'Error exporting data: {str(e)}')
 
 
 def format_rank_per_story(value):
@@ -803,6 +747,74 @@ def show_reddit_signals():
     if st.button('Export to Google Sheets'):
         try:
             url = export_to_gsheet(data, "Reddit Signals Data")
+            st.success(f'Data exported successfully! [Open Sheet]({url})')
+        except Exception as e:
+            st.error(f'Error exporting data: {str(e)}')
+
+def show_trending_scores():
+    st.title("Trending Signals: Dynamic Weight Adjustment")
+    apply_themes = st.sidebar.toggle("Apply Themes/Interests", value=False)
+    current_date = pd.Timestamp.now().strftime("%b %d, %Y")
+    st.markdown(
+        f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>The given data is fetched on {current_date}</div>",
+        unsafe_allow_html=True)
+
+    st.sidebar.header("Data Selection")
+    data_selection = st.sidebar.selectbox("Select Data Type", options=["Business", "Australia"], index=0)
+
+    data = load_data(data_selection, category='trending', apply_themes=apply_themes)
+
+    st.sidebar.header("Adjust Weights")
+    frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
+    page_rank_weight = st.sidebar.slider("Page Rank", 0.0, 1.0, 0.3, 0.1)
+    recency_weight = st.sidebar.slider("Recency Weight", 0.0, 1.0, 0.2, 0.1)
+    authors_weight = st.sidebar.slider("Authors Weight", 0.0, 1.0, 0.1, 0.1)
+
+    total_weight = frequency_weight + page_rank_weight + recency_weight + authors_weight
+    if not math.isclose(total_weight, 1.0, rel_tol=1e-6):
+        st.warning("The total weight must sum to exactly 1. Adjust the sliders accordingly.")
+        return
+
+    weights = {
+        'frequency': frequency_weight,
+        'page_rank': page_rank_weight,
+        'recency': recency_weight,
+        'authors': authors_weight
+    }
+
+    ranking_df = get_ranking_df(data, weights, data_selection)
+    grid_options = setup_grid_options(ranking_df)
+
+    # Display which data version is being used
+    theme_status = "with" if apply_themes else "without"
+    st.subheader(f"Top Trending Stories ({theme_status} Themes/Interests)")
+
+    custom_css = """
+        <style>
+        .ag-theme-streamlit {
+            width: 100%; /* Expand table to full width */
+            max-width: 1500px; /* Increase the maximum width for the table */
+            min-width: 1200px; /* Set a minimum width for better visibility */
+            margin: auto; /* Center the table on the page */
+            overflow: auto; /* Allow scrolling if necessary */
+        }
+        </style>
+    """
+
+    st.markdown(custom_css, unsafe_allow_html=True)
+
+    AgGrid(
+        ranking_df,
+        gridOptions=grid_options,
+        allow_unsafe_jscode=True,
+        enable_enterprise_modules=True,
+        height=600,
+        use_container_width=False,
+    )
+
+    if st.button('Export to Google Sheets'):
+        try:
+            url = export_to_gsheet(ranking_df, "Trending Signals Data")  # Pass ranking_df here
             st.success(f'Data exported successfully! [Open Sheet]({url})')
         except Exception as e:
             st.error(f'Error exporting data: {str(e)}')
