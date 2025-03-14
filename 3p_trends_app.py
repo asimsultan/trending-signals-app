@@ -55,7 +55,7 @@ def show_navigation():
             st.download_button(
                 label="Download Report",
                 data=pdf_bytes,
-                file_name="reddit_report.pdf",
+                file_name="business_trending_report.pdf",
                 mime="application/pdf"
             )
         except FileNotFoundError:
