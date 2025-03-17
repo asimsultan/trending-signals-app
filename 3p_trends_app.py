@@ -11,7 +11,6 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
-
 def login():
     st.sidebar.title("Login")
     username = st.sidebar.text_input("Username", key="username")
@@ -75,13 +74,20 @@ def calculate_recency(new_date, current_date):
 
 def get_ranking_df(data, weights, data_selection):
     data['new_date'] = preprocess_dates(data['new_date'])
+    # data['new_date'] = pd.to_datetime(data['new_date'], errors='coerce')
+
     current_date = pd.Timestamp.now()
     max_frequency = data['story_id'].value_counts().max()
     max_recency = data['new_date'].apply(lambda x: calculate_recency(x, current_date)).max()
     max_authors = data['authors'].apply(len).max()
     max_page_rank = data['page_rank'].max()
-    data['recency'] = data['new_date'].apply(lambda x: calculate_recency(x, current_date))
 
+    max_frequency = max(max_frequency, 1)
+    max_recency = max(max_recency, 1)
+    max_authors = max(max_authors, 1)
+    max_page_rank = max(max_page_rank, 1)
+
+    data['recency'] = data['new_date'].apply(lambda x: calculate_recency(x, current_date))
     aggregated = data.groupby('story_id').agg(
         frequency=('story_id', 'size'),
         title=('title', 'first'),
@@ -95,9 +101,7 @@ def get_ranking_df(data, weights, data_selection):
         top_designations=('top_designations', 'first'),
         mediaCount=('mediaCount', 'first'),
         sourceCount=('sourceCount', 'first')
-
     )
-    print('Aggregated Columns:', aggregated.shape)
 
     aggregated['frequency_norm'] = aggregated['frequency'] / max_frequency
 
@@ -764,6 +768,10 @@ def show_trending_scores():
 
     data = load_data(data_selection, category='trending', apply_themes=apply_themes)
 
+
+    print('=====', data.columns)
+    print('=====', data.shape)
+
     st.sidebar.header("Adjust Weights")
     frequency_weight = st.sidebar.slider("Frequency Weight", 0.0, 1.0, 0.4, 0.1)
     page_rank_weight = st.sidebar.slider("Page Rank", 0.0, 1.0, 0.3, 0.1)
@@ -783,6 +791,7 @@ def show_trending_scores():
     }
 
     ranking_df = get_ranking_df(data, weights, data_selection)
+    print('$$$$$$$$$', ranking_df.columns)
     grid_options = setup_grid_options(ranking_df)
 
     # Display which data version is being used
@@ -818,7 +827,6 @@ def show_trending_scores():
             st.success(f'Data exported successfully! [Open Sheet]({url})')
         except Exception as e:
             st.error(f'Error exporting data: {str(e)}')
-
 
 def main():
     if "authenticated" not in st.session_state:
