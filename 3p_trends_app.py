@@ -153,73 +153,54 @@ def get_latest_available_data(selection, category, apply_themes):
     max_days_to_check = 7  # Number of past days to check if today's data isn't available
     bucket_name = "trending-signal-bucket"  # Correct bucket name without the date
 
-    check_date = "2025-03-19"
-    if category == 'trending':
-        if apply_themes == False:
-            print('Reading Unfiltered one')
-            object_key = f"{check_date}/Business_df_unfiltered.pkl" if selection == "Business" else f"{check_date}/Australia_df_unfiltered.pkl"
-            print(object_key)
-        else:
-            object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
-        print(f"Checking: {bucket_name}/{object_key}")
-        try:
-            data = read_pkl_from_s3(bucket_name, object_key)
-            if data is not None:
-                return data, check_date
-        except Exception as e:
-            print(f"Error for {object_key}: {e}")
-    else:
+    for i in range(max_days_to_check):
+        check_date = (pd.Timestamp.now() - timedelta(days=i)).strftime("%Y-%m-%d")
 
+        if category == 'trending':
+            if apply_themes==False:
+                print('Reading Unfiltered one')
+                object_key = f"{check_date}/Business_df_unfiltered.pkl" if selection == "Business" else f"{check_date}/Australia_df_unfiltered.pkl"
+                print(object_key)
+            else:
+                object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
+            print(f"Checking: {bucket_name}/{object_key}")
+            try:
+                data = read_pkl_from_s3(bucket_name, object_key)
+                if data is not None:
+                    return data, check_date
+            except Exception as e:
+                print(f"Error for {object_key}: {e}")
+                continue
+        elif category == 'aggregator':
+            object_key = f"{check_date}/Aggregated_results.pkl"
+            print(f"Checking: {bucket_name}/{object_key}")
+            try:
+                data = read_pkl_from_s3(bucket_name, object_key)
+                if data is not None:
+                    return data, check_date
+            except Exception as e:
+                print(f"Error for {object_key}: {e}")
+                continue
+        elif category == 'reddit':  # Add Reddit category
+            object_key = f"{check_date}/Reddit_signals.pkl"
+            print(f"Checking: {bucket_name}/{object_key}")
+            try:
+                data = read_pkl_from_s3(bucket_name, object_key)
+                print('Un-filtered columns:', data.columns)
+                # data['date'] = pd.to_datetime(data['createdAt'])
+                # one_day_ago = pd.Timestamp.utcnow() - pd.Timedelta(hours=36)
+                # data = data[data['date'] >= one_day_ago]
+                # data = data[['storyId', 'title', 'downvotes', 'upvotes', 'createdAt', 'url', 'storyUrl', 'redditLink',
+                #              'velocity', 'compositeScore', 'normalizedScore', 'subredditRoute', 'subreddit_frequency']]
+                first_columns = ["storyId", "title", "compositeScore", "rank_mask", "subreddit_count"]
+                data = data[first_columns + [col for col in data.columns if col not in first_columns]]
+                print('Filtered columns:', data.columns)
 
-
-        for i in range(max_days_to_check):
-            check_date = (pd.Timestamp.now() - timedelta(days=i)).strftime("%Y-%m-%d")
-
-            if category == 'trending':
-                if apply_themes==False:
-                    print('Reading Unfiltered one')
-                    object_key = f"{check_date}/Business_df_unfiltered.pkl" if selection == "Business" else f"{check_date}/Australia_df_unfiltered.pkl"
-                    print(object_key)
-                else:
-                    object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
-                print(f"Checking: {bucket_name}/{object_key}")
-                try:
-                    data = read_pkl_from_s3(bucket_name, object_key)
-                    if data is not None:
-                        return data, check_date
-                except Exception as e:
-                    print(f"Error for {object_key}: {e}")
-                    continue
-            elif category == 'aggregator':
-                object_key = f"{check_date}/Aggregated_results.pkl"
-                print(f"Checking: {bucket_name}/{object_key}")
-                try:
-                    data = read_pkl_from_s3(bucket_name, object_key)
-                    if data is not None:
-                        return data, check_date
-                except Exception as e:
-                    print(f"Error for {object_key}: {e}")
-                    continue
-            elif category == 'reddit':  # Add Reddit category
-                object_key = f"{check_date}/Reddit_signals.pkl"
-                print(f"Checking: {bucket_name}/{object_key}")
-                try:
-                    data = read_pkl_from_s3(bucket_name, object_key)
-                    print('Un-filtered columns:', data.columns)
-                    # data['date'] = pd.to_datetime(data['createdAt'])
-                    # one_day_ago = pd.Timestamp.utcnow() - pd.Timedelta(hours=36)
-                    # data = data[data['date'] >= one_day_ago]
-                    # data = data[['storyId', 'title', 'downvotes', 'upvotes', 'createdAt', 'url', 'storyUrl', 'redditLink',
-                    #              'velocity', 'compositeScore', 'normalizedScore', 'subredditRoute', 'subreddit_frequency']]
-                    first_columns = ["storyId", "title", "compositeScore", "rank_mask", "subreddit_count"]
-                    data = data[first_columns + [col for col in data.columns if col not in first_columns]]
-                    print('Filtered columns:', data.columns)
-
-                    if data is not None:
-                        return data, check_date
-                except Exception as e:
-                    print(f"Error for {object_key}: {e}")
-                    continue
+                if data is not None:
+                    return data, check_date
+            except Exception as e:
+                print(f"Error for {object_key}: {e}")
+                continue
 
     print("No data available for the past 7 days.")
     return None, None
