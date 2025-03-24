@@ -73,12 +73,22 @@ def calculate_recency(new_date, current_date):
     return recency_score
 
 def get_ranking_df(data, weights, data_selection):
+    data['Story Date'] = pd.to_datetime(data['Story Date'])
+
     data['new_date'] = preprocess_dates(data['new_date'])
+    data['Story Date'] = preprocess_dates(data['Story Date'])
     # data['new_date'] = pd.to_datetime(data['new_date'], errors='coerce')
 
     current_date = pd.Timestamp.now()
     max_frequency = data['story_id'].value_counts().max()
-    max_recency = data['new_date'].apply(lambda x: calculate_recency(x, current_date)).max()
+    # max_recency = data['new_date'].apply(lambda x: calculate_recency(x, current_date)).max()
+
+    print('Story Date', data['Story Date'])
+    print('Type', data.info())
+
+
+    max_recency = data['Story Date'].apply(lambda x: calculate_recency(x, current_date)).max()
+
     max_authors = data['authors'].apply(len).max()
     max_page_rank = data['page_rank'].max()
 
@@ -87,7 +97,11 @@ def get_ranking_df(data, weights, data_selection):
     max_authors = max(max_authors, 1)
     max_page_rank = max(max_page_rank, 1)
 
-    data['recency'] = data['new_date'].apply(lambda x: calculate_recency(x, current_date))
+    # data['recency'] = data['new_date'].apply(lambda x: calculate_recency(x, current_date))
+    data['recency'] = data['Story Date'].apply(lambda x: calculate_recency(x, current_date))
+
+    print('$$$$$$$$$$ Data Columns', data.columns)
+
     aggregated = data.groupby('story_id').agg(
         frequency=('story_id', 'size'),
         title=('title', 'first'),
@@ -100,7 +114,8 @@ def get_ranking_df(data, weights, data_selection):
         rank_mask=('rank_mask', 'first'),
         top_designations=('top_designations', 'first'),
         mediaCount=('mediaCount', 'first'),
-        sourceCount=('sourceCount', 'first')
+        sourceCount=('sourceCount', 'first'),
+        storyDate=('Story Date', 'first')
     )
 
     aggregated['frequency_norm'] = aggregated['frequency'] / max_frequency
@@ -120,7 +135,7 @@ def get_ranking_df(data, weights, data_selection):
 
     ranking_df = aggregated.reset_index()[
         ['story_id', 'title', 'frequency', 'trending_signal_score', 'page_rank_norm', 'views', 'internal_rank',
-         'rank_mask', 'top_designations', 'mediaCount', 'sourceCount', 'date']]
+         'rank_mask', 'top_designations', 'mediaCount', 'sourceCount', 'date', 'storyDate']]
     ranking_df = ranking_df.sort_values(by='trending_signal_score', ascending=False)
     # ranking_df['story_id'] = ranking_df['story_id'].apply(
     #     lambda x: f'<a href="https://ground.news/article/{x}" target="_blank">{x}</a>')
@@ -166,6 +181,7 @@ def get_latest_available_data(selection, category, apply_themes):
             print(f"Checking: {bucket_name}/{object_key}")
             try:
                 data = read_pkl_from_s3(bucket_name, object_key)
+                print('Data read is', data.columns)
                 if data is not None:
                     return data, check_date
             except Exception as e:
