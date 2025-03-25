@@ -211,8 +211,13 @@ def get_latest_available_data(selection, category, apply_themes):
                 # data = data[data['date'] >= one_day_ago]
                 # data = data[['storyId', 'title', 'downvotes', 'upvotes', 'createdAt', 'url', 'storyUrl', 'redditLink',
                 #              'velocity', 'compositeScore', 'normalizedScore', 'subredditRoute', 'subreddit_frequency']]
+
+                # first_columns = ["storyId", "title", "compositeScore", "rank_mask", "subreddit_count"]
+                # data = data[first_columns + [col for col in data.columns if col not in first_columns]]
+
                 first_columns = ["storyId", "title", "compositeScore", "rank_mask", "subreddit_count"]
-                data = data[first_columns + [col for col in data.columns if col not in first_columns]]
+                remaining_columns = [col for col in data.columns if col not in first_columns]
+                data = data[first_columns + remaining_columns]
 
                 if data is not None:
                     return data, check_date
