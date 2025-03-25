@@ -10,7 +10,8 @@ import io, os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
-import time, reddit_report
+import time
+# import reddit_report
 
 def login():
     st.sidebar.title("Login")
@@ -56,7 +57,7 @@ def show_navigation():
                 time.sleep(0.5)  # Replace with actual report generation time
                 progress_bar.progress((i + 1) * 10, "Generating Report...")
 
-            reddit_report.generate_report()  # Generate the report
+            # reddit_report.generate_report()  # Generate the report
 
             progress_bar.empty()  # Remove the progress bar
 
