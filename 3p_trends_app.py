@@ -11,7 +11,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 import time
-# import reddit_report
+import reddit_report
 
 def login():
     st.sidebar.title("Login")
@@ -356,7 +356,7 @@ def show_trending_scores():
         <style>
         .ag-theme-streamlit {
             width: 100%; /* Expand table to full width */
-            max-width: 1500px; /* Increase the maximum width for the table */
+        \    max-width: 1500px; /* Increase the maximum width for the table */
             min-width: 1200px; /* Set a minimum width for better visibility */
             margin: auto; /* Center the table on the page */
             overflow: auto; /* Allow scrolling if necessary */
