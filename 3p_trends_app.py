@@ -10,6 +10,7 @@ import io, os
 import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
+import time, reddit_report
 
 def login():
     st.sidebar.title("Login")
@@ -48,19 +49,36 @@ def show_navigation():
         st.session_state["current_page"] = "overall"
         st.rerun()
     if st.sidebar.button("Export Report"):
+        progress_bar = st.progress(0, "Generating Report...")
         try:
+            # Simulate report generation time (replace with actual report generation)
+            for i in range(10):  # Adjust the range to reflect your actual report generation steps
+                time.sleep(0.5)  # Replace with actual report generation time
+                progress_bar.progress((i + 1) * 10, "Generating Report...")
+
+            reddit_report.generate_report()  # Generate the report
+
+            progress_bar.empty()  # Remove the progress bar
+
             with open("business_trending_report.pdf", "rb") as pdf_file:
                 pdf_bytes = pdf_file.read()
+
             st.download_button(
                 label="Download Report",
                 data=pdf_bytes,
                 file_name="business_trending_report.pdf",
                 mime="application/pdf"
             )
+
+            st.success("Report generated and ready for download!")
+
         except FileNotFoundError:
-            st.error("Report file 'report.pdf' not found.")
+            st.error(
+                "Report file 'business_trending_report.pdf' not found. Please check if the report was generated successfully.")
+            progress_bar.empty()
         except Exception as e:
-            st.error(f"An error occurred: {e}")
+            st.error(f"An error occurred during report generation or download: {e}")
+            progress_bar.empty()
 
 def preprocess_dates(date_col):
     return date_col.apply(lambda x: x.replace(tzinfo=None) if pd.notnull(x) and hasattr(x, 'tzinfo') else x)
@@ -82,11 +100,6 @@ def get_ranking_df(data, weights, data_selection):
     current_date = pd.Timestamp.now()
     max_frequency = data['story_id'].value_counts().max()
     # max_recency = data['new_date'].apply(lambda x: calculate_recency(x, current_date)).max()
-
-    print('Story Date', data['Story Date'])
-    print('Type', data.info())
-
-
     max_recency = data['Story Date'].apply(lambda x: calculate_recency(x, current_date)).max()
 
     max_authors = data['authors'].apply(len).max()
@@ -99,8 +112,6 @@ def get_ranking_df(data, weights, data_selection):
 
     # data['recency'] = data['new_date'].apply(lambda x: calculate_recency(x, current_date))
     data['recency'] = data['Story Date'].apply(lambda x: calculate_recency(x, current_date))
-
-    print('$$$$$$$$$$ Data Columns', data.columns)
 
     aggregated = data.groupby('story_id').agg(
         frequency=('story_id', 'size'),
@@ -173,36 +184,27 @@ def get_latest_available_data(selection, category, apply_themes):
 
         if category == 'trending':
             if apply_themes==False:
-                print('Reading Unfiltered one')
                 object_key = f"{check_date}/Business_df_unfiltered.pkl" if selection == "Business" else f"{check_date}/Australia_df_unfiltered.pkl"
-                print(object_key)
             else:
                 object_key = f"{check_date}/Business_df.pkl" if selection == "Business" else f"{check_date}/Australia_df.pkl"
-            print(f"Checking: {bucket_name}/{object_key}")
             try:
                 data = read_pkl_from_s3(bucket_name, object_key)
-                print('Data read is', data.columns)
                 if data is not None:
                     return data, check_date
             except Exception as e:
-                print(f"Error for {object_key}: {e}")
                 continue
         elif category == 'aggregator':
             object_key = f"{check_date}/Aggregated_results.pkl"
-            print(f"Checking: {bucket_name}/{object_key}")
             try:
                 data = read_pkl_from_s3(bucket_name, object_key)
                 if data is not None:
                     return data, check_date
             except Exception as e:
-                print(f"Error for {object_key}: {e}")
                 continue
         elif category == 'reddit':  # Add Reddit category
             object_key = f"{check_date}/Reddit_signals.pkl"
-            print(f"Checking: {bucket_name}/{object_key}")
             try:
                 data = read_pkl_from_s3(bucket_name, object_key)
-                print('Un-filtered columns:', data.columns)
                 # data['date'] = pd.to_datetime(data['createdAt'])
                 # one_day_ago = pd.Timestamp.utcnow() - pd.Timedelta(hours=36)
                 # data = data[data['date'] >= one_day_ago]
@@ -210,7 +212,6 @@ def get_latest_available_data(selection, category, apply_themes):
                 #              'velocity', 'compositeScore', 'normalizedScore', 'subredditRoute', 'subreddit_frequency']]
                 first_columns = ["storyId", "title", "compositeScore", "rank_mask", "subreddit_count"]
                 data = data[first_columns + [col for col in data.columns if col not in first_columns]]
-                print('Filtered columns:', data.columns)
 
                 if data is not None:
                     return data, check_date
@@ -420,9 +421,6 @@ def show_aggregator_scores():
     aggregator_data["rank_per_story"] = aggregator_data["rank_per_story"].apply(format_rank_per_story)
     aggregator_data["repeated_mentions"] = aggregator_data["repeated_mentions"].apply(format_repeated_mentions)
 
-    print('Column names:')
-    print(aggregator_data.columns)
-
     # Create grid options builder
     gb = GridOptionsBuilder.from_dataframe(aggregator_data)
 
@@ -546,7 +544,6 @@ def show_overall_view():
 
     overall_df = trending_df_filtered.merge(aggregator_data_filtered, on='story_id', how='inner')
     overall_df = overall_df.merge(reddit_data_filtered, left_on='story_id', right_on='storyId', how='inner')
-    print('Columns are here:', overall_df.columns)
     overall_df.drop_duplicates(subset=['storyId'], inplace=True)
 
 
@@ -723,9 +720,6 @@ def show_reddit_signals():
     data = load_data('', category='reddit', apply_themes=False)
     data = data.sort_values(by='compositeScore', ascending=False)
 
-    print('Data Columns')
-    print(data.columns)
-
     if data is None:
         st.error("Unable to load Reddit signals data")
         return
@@ -786,9 +780,6 @@ def show_trending_scores():
 
     data = load_data(data_selection, category='trending', apply_themes=apply_themes)
 
-    print('=====', data.columns)
-    print('=====', data.shape)
-
     if data.shape[0] == 0:
         st.subheader("Top Trending Stories")
         st.write("No trending signals in the last 24 hours.")  # Display the message
@@ -820,7 +811,6 @@ def show_trending_scores():
     }
 
     ranking_df = get_ranking_df(data, weights, data_selection)
-    print('$$$$$$$$$', ranking_df.columns)
     grid_options = setup_grid_options(ranking_df)
 
     # Display which data version is being used
