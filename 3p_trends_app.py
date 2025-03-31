@@ -202,8 +202,12 @@ def get_latest_available_data(selection, category, apply_themes):
                     return data, check_date
             except Exception as e:
                 continue
-        elif category == 'reddit':  # Add Reddit category
-            object_key = f"{check_date}/Reddit_signals.pkl"
+        elif category == 'reddit':
+
+            if apply_themes==False:
+                object_key = f"{check_date}/Reddit_signals_unfiltered.pkl"
+            else:
+                object_key = f"{check_date}/Reddit_signals_filtered.pkl"
             try:
                 data = read_pkl_from_s3(bucket_name, object_key)
                 # data['date'] = pd.to_datetime(data['createdAt'])
@@ -217,7 +221,14 @@ def get_latest_available_data(selection, category, apply_themes):
 
                 first_columns = ["storyId", "title", "compositeScore", "rank_mask", "subreddit_count"]
                 remaining_columns = [col for col in data.columns if col not in first_columns]
+
+                print('Remaining Columns', remaining_columns)
                 data = data[first_columns + remaining_columns]
+                data = data.drop(['story_id'], axis=1)
+
+                # data.rename(columns={'sourceCount_x': 'sourceCount'}, inplace=True)
+
+                print('Remaining Columns now', data.columns)
 
                 if data is not None:
                     return data, check_date
@@ -712,10 +723,9 @@ def export_to_gsheet(df, sheet_name="Trending Signals Data"):
     except Exception as e:
         raise Exception(f"Error in Google Sheets export: {str(e)}")
 
-
 def show_reddit_signals():
     st.title("Reddit Signals Analysis")
-
+    apply_themes = st.sidebar.toggle("Apply Themes/Interests", value=False)
     current_date = datetime.now().strftime("%b %d, %Y")
     st.markdown(
         f"<div style='text-align: right; font-size: 14px; font-weight: bold;'>Data fetched on {current_date}</div>",
@@ -723,7 +733,8 @@ def show_reddit_signals():
     )
 
     # Load Reddit data using existing function
-    data = load_data('', category='reddit', apply_themes=False)
+    # data = load_data('', category='reddit', apply_themes=False)
+    data = load_data('', category='reddit', apply_themes=apply_themes)
     data = data.sort_values(by='compositeScore', ascending=False)
 
     if data is None:
@@ -742,6 +753,9 @@ def show_reddit_signals():
             filterParams={"filter": "agTextColumnFilter"},
             floatingFilter=True
         )
+
+    theme_status = "with" if apply_themes else "without"
+    st.subheader(f"Top Trending Stories ({theme_status} Themes/Interests)")
 
     grid_options = gb.build()
     grid_options.update({
